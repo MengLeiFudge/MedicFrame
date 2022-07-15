@@ -1,0 +1,84 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 30
+    buildToolsVersion '30.0.3'
+
+    defaultConfig {
+        applicationId "com.menglei.medic_frame"
+        minSdkVersion 26
+        targetSdkVersion 30
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        // 想使用lambda表达式，至少需要jdk8
+        // 不能使用jdk11，会出现 org.json 包找不到的情况
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+        //sourceCompatibility JavaVersion.VERSION_11
+        //targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+    // 本身只是框架，不是 app，所以不需要 appcompat
+    // implementation 'androidx.appcompat:appcompat:1.4.1'
+    // lombok 可以使用注解节省很多代码，好用√
+    // 注意，compileOnly 和 annotationProcessor 两个必须都存在，缺一不可！
+    implementation 'org.projectlombok:lombok:1.18.24'
+    annotationProcessor 'org.projectlombok:lombok:1.18.24'
+    // commons-io，实用的 IO 操作包，好用√
+    // 但 gradle/jar 引用生成的 dex 无相应方法，源代码已集合至框架中 
+    // implementation group: 'commons-io', name: 'commons-io', version: '2.8.0'
+}
+
+/**
+ * 如果生成多个dex，则将其打包到一起.
+ */
+task mergeDex {
+    // task不能继承于copy、exec或其他，否则doFirst或者doLast块不会运行
+    // 必须写在doFirst或者doLast块中，否则会提早运行
+    // 所以只能是这种结构，在非继承task内的doLast块内增加copy和exec块
+    doLast {
+        File dir0 = new File(projectDir, "build/intermediates/dex/debug/mergeProjectDexDebug/0")
+        if (!dir0.exists()) {
+            println("编译生成的dex只有一个，无需整合！")
+            return
+        }
+        println("编译生成的dex有多个，开始复制所有dex...")
+        copy {
+            // gradle里面的循环写法，表示0-15依次循环
+            16.times {
+                int i = (int) it
+                from("build/intermediates/dex/debug/mergeProjectDexDebug/" + i) {
+                    include "classes.dex"
+                    rename "classes.dex", "classes" + i + ".dex"
+                }
+            }
+            into('build/intermediates/dex/debug/mergeProjectDexDebug/allDex')
+        }
+        println("复制完毕，使用d8将dex合并...")
+        println("如果失败，请检查d8.bat所在目录，并将最后一行的 -Djava.ext.dirs 改为 --class-path")
+        exec {
+            // /c表示命令行执行完毕后关闭窗口，官方这么教的
+            commandLine 'cmd', '/c',
+                    //'C:/Users/Administrator/AppData/Local/Android/Sdk/build-tools/'+ buildToolsVersion +'/d8.bat ' +
+                    'E:/Android/SDK/build-tools/30.0.3/d8.bat ' +
+                            './build/intermediates/dex/debug/mergeProjectDexDebug/allDex/*.dex ' +
+                            '--output ./build/intermediates/dex/debug/mergeProjectDexDebug'
+        }
+        println("合并完毕！")
+    }
+}
+// 设置只要执行了build，就会在build执行后运行mergeDex
+tasks.build.finalizedBy(mergeDex)

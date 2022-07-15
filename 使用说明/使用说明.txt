@@ -1,0 +1,13 @@
+使用说明
+1.如果没有 medic 服务器，可以使用我的服务器，将 Config.cfg 放在手机 DIC 目录中即可。
+2.【非常重要】本框架是为 java 开发者使用，且默认您已经掌握 java 及 android 开发。
+3.该框架需配合该文件夹内的 hdic.txt 一起使用，hdic.txt 放在手机 DIC 目录中。
+4.运行该框架后，将会生成【单个的】 classes.dex 文件，将其放在手机 DIC/libs 目录中。
+
+开发说明
+1.使用 intellij idea 导入该项目，作为安卓应用开发。不用AS是因为项目使用 lombok，而as的lombok更新很慢，故放弃。idea需要安装 lombok 插件并启用注解扩展功能，具体方法请百度。
+2.core包为核心，func包为各个功能扩展。
+3.大多方法都有注释，如果看过注释仍不理解，请联系我（QQ 605738729）。
+4.运行 MedicFrame [Build]，可以生成一个 classes.dex（生成多个也会自动打包成一个），项目根目录的快捷方式可以直接打开所在文件夹。
+5.运行过程中出现控制台乱码，请参考 https://blog.csdn.net/weixin_44471080/article/details/125205592
+6.项目内的 PackageAsZip 是一个独立的控制台应用，用于将该工程打包为 zip 导出。生成的 zip 在 MedicFrame 的上级目录。
