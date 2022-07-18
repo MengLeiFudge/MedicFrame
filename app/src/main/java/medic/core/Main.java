@@ -109,7 +109,7 @@ public final class Main {
      *
      * @see #getVersion()
      */
-    static final String LAST_MODIFY_DATE = "2022-0715-1630";
+    static final String LAST_MODIFY_DATE = "2022-0719-0254";
 
     /**
      * 获取以 {@link #LAST_MODIFY_DATE} 计算得到的版本字符串.

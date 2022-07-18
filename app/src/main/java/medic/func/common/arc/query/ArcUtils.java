@@ -4,17 +4,20 @@ import medic.core.Utils;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.Calendar;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static medic.core.Utils.DEF_STRING;
 import static medic.core.Utils.deserialize;
 import static medic.core.Utils.getFile;
+import static medic.core.Utils.getInfoFromUrl;
 import static medic.core.Utils.getMd5;
-import static medic.core.Utils.getStrFromURL;
 import static medic.core.Utils.getString;
 import static medic.core.Utils.logError;
 import static medic.core.Utils.serialize;
@@ -29,376 +32,181 @@ public class ArcUtils {
 
     /* -- api接口 -- */
 
-    static final String USER_AGENT = "menglei";
+    //WIKI 地址：https://github.com/Arcaea-Infinity/ArcaeaUnlimitedAPI-Wiki
 
     /**
-     * 从湖精姐姐的 arc api 获取信息
+     * 从 aw 的 arc api 获取信息.
      *
-     * @param query  要使用的功能
-     * @param params 参数
-     * @return 获得的字符串
+     * @param function  要使用的功能
+     * @param urlParams 功能所需参数
+     * @return 查询结果
      */
-    public static String getStrFromHJ(String query, Map<String, Object> params) {
-        StringBuilder url = new StringBuilder("https://arcapi.cirnobaka.moe/v2/" + query + "?");
-        // 是否在键值对前加上连接符 &，第一个键值对不需要，之后都需要
-        boolean needConnector = false;
-        for (Map.Entry<String, Object> p : params.entrySet()) {
-            if (needConnector) {
-                url.append("&");
-            } else {
-                needConnector = true;
-            }
-            url.append(p.getKey()).append("=").append(p.getValue());
-        }
-        return getStrFromURL(url.toString(), USER_AGENT);
+    public static String getStrFromAW(String function, Map<String, String> urlParams) {
+        String url = "https://server.awbugl.top/botarcapi/" + function;
+        Map<String, String> headerParams = new LinkedHashMap<>();
+        headerParams.put("User-Agent", "menglei");
+        return getInfoFromUrl(url, urlParams, headerParams);
     }
 
     /**
-     * 玩家基本信息，可以选择是否获取最近游玩情况.
+     * user/info.
      * <p>
-     * ps1：recent_score 可能为 null（没有游玩记录）
-     * <p>
-     * 返回数据样例如下：
-     * <pre>
-     * {
-     *     "status": 0,
-     *     "content": {
-     *         "user_id": 114514,
-     *         "name": "114514",
-     *         "recent_score": {
-     *             "song_id": "grievouslady",
-     *             "difficulty": 2,
-     *             "score": 0,
-     *             "shiny_perfect_count": 0,
-     *             "perfect_count": 0,
-     *             "near_count": 0,
-     *             "miss_count": 0,
-     *             "clear_type": 0,
-     *             "best_clear_type": 0,
-     *             "health": 0,
-     *             "time_played": 1145141145141,
-     *             "modifier": 0,
-     *             "rating": 0
-     *         },
-     *         "character": 0,
-     *         "join_date": 1145141145141,
-     *         "rating": 0,
-     *         "is_skill_sealed": false,
-     *         "is_char_uncapped": false,
-     *         "is_char_uncapped_override": false,
-     *         "is_mutual": false
-     *     }
-     * }
-     * </pre>
-     * status可能返回的值以及含义如下：
-     * <pre>
-     * status    description
-     * 0         everything is OK
-     * -1        invalid usercode
-     * -2        allocate an arc account failed
-     * -3        clear friend list failed
-     * -4        add friend failed
-     * -5        internal error occurred
-     * -233      unknown error occurred
-     * </pre>
+     * 绑定时使用，无具体信息。
      *
-     * @param arcID  arcID，因为有 0 开头的 id，所以使用 String
-     * @param recent 是否获取最近游玩情况
-     * @return 玩家信息
+     * @param user user name or 9-digit user code
+     * @return user/info
      */
-    public static String getUserInfo(String arcID, boolean recent) {
-        Map<String, Object> params = new HashMap<>();
-        params.put("usercode", arcID);
-        params.put("recent", recent);// 可选
-        return getStrFromHJ("userinfo", params);
+    public static String getUserInfo(String user) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("user", user);
+        return getStrFromAW("user/info", params);
     }
-
-    /*
-{
-    "status": 0,
-    "content": {
-        "song_id": "grievouslady",
-        "difficulty": 2,
-        "score": 0,
-        "shiny_perfect_count": 0,
-        "perfect_count": 0,
-        "near_count": 0,
-        "miss_count": 0,
-        "health": 0,
-        "modifier": 0,
-        "time_played": 1145141145141,
-        "best_clear_type": 0,
-        "clear_type": 0,
-        "character": 0,
-        "is_skill_sealed": false,
-        "is_char_uncapped": false,
-        "rating": 0.0000
-    }
-}
-     */
 
     /**
-     * 玩家单曲最佳记录.
-     * status可能返回的值以及含义如下：
-     * status	description
-     * 0	everything is OK
-     * -1	invalid usercode
-     * -2	invalid songname
-     * -3	invalid difficulty
-     * -4	invalid difficulty (map format failed)
-     * -5	this song is not recorded in the database
-     * -6	too many records
-     * -7	internal error
-     * -8	this song has no beyond level
-     * -9	allocate an arc account failed
-     * -10	clear friend list failed
-     * -11	add friend failed
-     * -12	internal error occurred
-     * -13	internal error occurred
-     * -14	not played yet
-     * -233	unknown error occurred
+     * user/info.
+     * <p>
+     * 需要具体信息（如最近打歌情况等）时使用。
      *
-     * @param arcID      arcID，因为有0开头的id，所以使用String
-     * @param songName   歌曲名，支持模糊搜索
-     * @param difficulty 难度，0/1/2/3 or pst/prs/ftr/byn or past/present/future/beyond
-     * @return 玩家单曲最佳记录
+     * @param usercode     9-digit user code
+     * @param recent       number, range 0-7. The number of recently played songs expected
+     * @param withsonginfo boolean. if true, will reply with songinfo
+     * @return user/info
      */
-    public static String getUserBest(String arcID, String songName, String difficulty) {
-        Map<String, Object> params = new HashMap<>();
-        params.put("usercode", arcID);
-        params.put("songname", songName);
+    public static String getUserInfo(String usercode, int recent, boolean withsonginfo) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("usercode", usercode);
+        params.put("recent", recent + "");// 可选
+        params.put("withsonginfo", withsonginfo + "");// 可选
+        return getStrFromAW("user/info", params);
+    }
+
+    /**
+     * user/best.
+     * <p>
+     * 查询个人单曲最佳时使用。
+     *
+     * @param usercode     9-digit user code
+     * @param songname     any song name for fuzzy querying
+     * @param difficulty   accept format are 0/1/2/3 or pst/prs/ftr/byn or past/present/future/beyond
+     * @param withrecent   boolean. if true, will reply with recent_score
+     * @param withsonginfo boolean. if true, will reply with songinfo
+     * @return user/best
+     */
+    public static String getUserBest(String usercode, String songname, String difficulty,
+                                     boolean withrecent, boolean withsonginfo) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("usercode", usercode);
+        params.put("songname", songname);
         params.put("difficulty", difficulty);
-        return getStrFromHJ("userbest", params);
+        params.put("withrecent", withrecent + "");// 可选
+        params.put("withsonginfo", withsonginfo + "");// 可选
+        return getStrFromAW("user/best", params);
     }
-
-    /*
-{
-    "status": 0,
-    "content": {
-        "best30_avg": 0.0000,
-        "recent10_avg": 0.0000,
-        "best30_list": [
-            {
-                "song_id": "grievouslady",
-                "difficulty": 2,
-                "score": 0,
-                "shiny_perfect_count": 0,
-                "perfect_count": 0,
-                "near_count": 0,
-                "miss_count": 0,
-                "health": 0,
-                "modifier": 0,
-                "time_played": 114514145141,
-                "best_clear_type": 0,
-                "clear_type": 0,
-                "character": 0,
-                "is_skill_sealed": false,
-                "is_char_uncapped": false,
-                "rating": 0.0000
-            },
-            // more data....
-        ]
-    }
-}
-     */
 
     /**
-     * 玩家b30.
+     * user/best.
+     * <p>
+     * 对于推分指令，程序查询个人全部单曲最佳时使用，需要使用歌曲sid。
+     *
+     * @param usercode   9-digit user code
+     * @param songid     sid in Arcaea songlist
+     * @param difficulty accept format are 0/1/2/3 or pst/prs/ftr/byn or past/present/future/beyond
+     * @return user/best
+     */
+    public static String getUserBest(String usercode, String songid, String difficulty) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("usercode", usercode);
+        params.put("songid", songid);
+        params.put("difficulty", difficulty);
+        return getStrFromAW("user/best", params);
+    }
+
+    /**
+     * user/best30.
+     * <p>
+     * 查询个人单曲最佳前30时使用。
+     * <p>
      * ps1：隐藏ptt（即灰框）时，recent10_avg = 0
+     * <p>
      * ps2：best30_list 有可能少于 30 个（通常出现于新玩家）
-     * status可能返回的值以及含义如下：
-     * status	description
-     * 0	everything is OK
-     * -1	invalid usercode
-     * -2	allocate an arc account failed
-     * -3	clear friend list failed
-     * -4	add friend failed
-     * -5	internal error occurred
-     * -6	not played yet
-     * -7	internal error occurred
-     * -8	internal error occurred
-     * -9	internal error occurred
-     * -10	internal error occurred
-     * -11	querying best30 failed
-     * -12	internal error occurred
-     * -13	querying best30 failed
-     * -233	unknown error occurred
      *
-     * @param arcID arcID，因为有0开头的id，所以使用String
-     * @return 玩家b30
+     * @param usercode     9-digit user code
+     * @param overflow     number, range 0-10. The number of the overflow records below the best30 minimum
+     * @param withrecent   boolean. if true, will reply with recent_score
+     * @param withsonginfo boolean. if true, will reply with songinfo
+     * @return user/best30
      */
-    public static String getUserBest30(String arcID) {
-        Map<String, Object> params = new HashMap<>();
-        params.put("usercode", arcID);
-        return getStrFromHJ("userbest30", params);
+    public static String getUserBest30(String usercode, int overflow, boolean withrecent, boolean withsonginfo) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("usercode", usercode);
+        params.put("overflow", overflow + "");// 可选
+        params.put("withrecent", withrecent + "");// 可选
+        params.put("withsonginfo", withsonginfo + "");// 可选
+        return getStrFromAW("user/best30", params);
     }
-
-    /*
-{
-    "status": 0,
-    "content": {
-        "id": "ifi",
-        "title_localized": {
-            "en": "#1f1e33"
-        },
-        "artist": "かめりあ(EDP)",
-        "bpm": "181",
-        "bpm_base": 181,
-        "set": "vs",
-        "audioTimeSec": 163,
-        "side": 1,
-        "remote_dl": true,
-        "world_unlock": false,
-        "date": 1590537604,
-        "difficulties": [
-            {
-                "ratingClass": 0,
-                "chartDesigner": "夜浪",
-                "jacketDesigner": "望月けい",
-                "rating": 5,
-                "ratingReal": 5.5
-            },
-            {
-                "ratingClass": 1,
-                "chartDesigner": "夜浪",
-                "jacketDesigner": "望月けい",
-                "rating": 9,
-                "ratingReal": 9.2
-            },
-            {
-                "ratingClass": 2,
-                "chartDesigner": "夜浪 VS 東星 \"Convergence\"",
-                "jacketDesigner": "望月けい",
-                "rating": 10,
-                "ratingReal": 10.9,
-                "ratingPlus": true
-            }
-        ]
-    }
-}
-     */
 
     /**
-     * 单曲信息.
-     * ps1：title_localized.ja 可能为 null，但 title_localized.en 一定存在
-     * status可能返回的值以及含义如下：
-     * status	description
-     * 0	everything is OK
-     * -1	invalid songname
-     * -2	this song is not recorded in the database
-     * -3	too many records
-     * -233	unknown error occurred
+     * song/info.
+     * <p>
+     * 查询单曲信息时使用。
      *
-     * @param songName 歌曲名，支持模糊搜索
-     * @return 单曲信息
+     * @param songname any song name for fuzzy querying
+     * @return song/info
      */
-    public static String getSongInfo(String songName) {
-        Map<String, Object> params = new HashMap<>();
-        params.put("songname", songName);
-        return getStrFromHJ("songinfo", params);
+    public static String getSongInfo(String songname) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("songname", songname);
+        return getStrFromAW("song/info", params);
     }
-
-    /*
-{
-    "status": 0,
-    "content": {
-        "id": "grievouslady"
-    }
-}
-     */
 
     /**
-     * 单曲id.
-     * ps1：仅返回单曲id。如果想获取详细信息，请使用 String songInfo(String songName)
-     * status可能返回的值以及含义如下：
-     * status	description
-     * 0	everything is OK
-     * -1	invalid songname
-     * -2	this song is not recorded in the database
-     * -3	too many records
-     * -233	unknown error occurred
+     * song/info.
+     * <p>
+     * 对于推分指令，程序查询单曲信息时使用，需要使用歌曲sid。
      *
-     * @param songName 歌曲名，支持模糊搜索
-     * @return 单曲id
+     * @param songid sid in Arcaea songlist
+     * @return song/info
      */
-    public static String getSongID(String songName) {
-        Map<String, Object> params = new HashMap<>();
-        params.put("songname", songName);
-        return getStrFromHJ("songalias", params);
+    public static String getSongInfo2(String songid) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("songid", songid);
+        return getStrFromAW("song/info", params);
     }
 
-    /*
-{
-    "status": 0,
-    "content": {
-        "id": "ifi",
-        "rating_class": 2,
-        "song_info": {
-            "id": "ifi",
-            "title_localized": {
-                "en": "#1f1e33"
-            },
-            "artist": "かめりあ(EDP)",
-            "bpm": "181",
-            "bpm_base": 181,
-            "set": "vs",
-            "audioTimeSec": 163,
-            "side": 1,
-            "remote_dl": true,
-            "world_unlock": false,
-            "date": 1590537604,
-            "difficulties": [
-                {
-                    "ratingClass": 0,
-                    "chartDesigner": "夜浪",
-                    "jacketDesigner": "望月けい",
-                    "rating": 5,
-                    "ratingReal": 5.5
-                },
-                {
-                    "ratingClass": 1,
-                    "chartDesigner": "夜浪",
-                    "jacketDesigner": "望月けい",
-                    "rating": 9,
-                    "ratingReal": 9.2
-                },
-                {
-                    "ratingClass": 2,
-                    "chartDesigner": "夜浪 VS 東星 \"Convergence\"",
-                    "jacketDesigner": "望月けい",
-                    "rating": 10,
-                    "ratingReal": 10.9,
-                    "ratingPlus": true
-                }
-            ]
-        }
-    }
-}
-     */
+    // song/alias作用是根据sid或俗称，返回歌曲的所有俗称。没什么用，所以不写了。
 
     /**
-     * 随机选曲.
-     * ps1：访问时传入的参数级别是2-23，代表1、1+、2、2+...11、11+
-     * ps2：content.song_info 的数据与使用 String songInfo(String songName) 获得的数据是一致的
-     * status 可能返回的值以及含义如下：
-     * status	description
-     * 0	everything is OK
-     * -1	invalid range of start
-     * -2	invalid range of end
-     * -3	internal error
-     * -4	internal error
-     * -233	unknown error occurred
+     * song/random.
+     * <p>
+     * 随机选曲时使用。
      *
-     * @param minLv          等级下限
-     * @param minPlus        下限是否增加0.7
-     * @param maxLv          等级上限
-     * @param maxPlus        上限是否增加0.7
-     * @param returnSongInfo 是否需要返回 songInfo
-     * @return 随机选曲
+     * @param start        range of start (9+ => 9p , 10+ => 10p)
+     * @param end          range of end
+     * @param withsonginfo boolean. if true, will reply with songinfo
+     * @return song/random
+     */
+    private static String getRandomSong(int start, int end, boolean withsonginfo) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("start", start + "");// 可选
+        params.put("end", end + "");// 可选
+        params.put("withsonginfo", withsonginfo + "");// 可选
+        return getStrFromAW("song/random", params);
+    }
+
+    /**
+     * song/random.
+     * <p>
+     * 随机选曲时使用，便于调用。
+     *
+     * @param minLv        等级下限数字
+     * @param minPlus      下限是否带+
+     * @param maxLv        等级上限数字
+     * @param maxPlus      下限是否带+
+     * @param withsonginfo boolean. if true, will reply with songinfo
+     * @return song/random
      */
     public static String getRandomSong(int minLv, boolean minPlus,
-                                       int maxLv, boolean maxPlus, boolean returnSongInfo) {
-        Map<String, Object> params = new HashMap<>();
+                                       int maxLv, boolean maxPlus, boolean withsonginfo) {
         int min = minLv * 2 + (minPlus ? 1 : 0);
         int max = maxLv * 2 + (maxPlus ? 1 : 0);
         if (min > max) {
@@ -406,42 +214,16 @@ public class ArcUtils {
             max ^= min;
             min ^= max;
         }
-        params.put("start", min);// 没有end情况下，可选
-        params.put("end", max);// 可选
-        params.put("info", returnSongInfo);// 可选
-        return getStrFromHJ("random", params);
-    }
-
-    /*
-{
-    "status": 0,
-    "content": {
-        "key": "hzfxlxm"
-    }
-}
-     */
-
-    /**
-     * 当前 arc connect 码.
-     * ps1：网址是 https://lowest.world/connect.
-     * status 可能返回的值以及含义如下：
-     * status	description
-     * 0	everything is OK
-     *
-     * @return 当前 arc connect 码
-     * @deprecated 使用 {@link #getConnectCodeStr()} 代替
-     */
-    @Deprecated
-    public static String getConnectCode() {
-        Map<String, Object> params = new HashMap<>();
-        return getStrFromHJ("connect", params);
+        return getRandomSong(min, max, withsonginfo);
     }
 
     /**
      * 计算当前 arc connect 码.
      *
      * @return 当前 arc connect 码
+     * @deprecated 这个解迷仅在3.0.0出的时候有用，现在已经不需要该解迷了。
      */
+    @Deprecated
     public static String getConnectCodeStr() {
         Calendar cal = Calendar.getInstance();
         int zoneOffset = cal.get(Calendar.ZONE_OFFSET);
@@ -462,6 +244,17 @@ public class ArcUtils {
                 table.charAt(md5.charAt(2) % 36),
                 table.charAt(md5.charAt(11) % 36),
                 table.charAt(md5.charAt(23) % 36)});
+    }
+
+    /**
+     * update.
+     * <p>
+     * 游戏更新时使用，可以获取apk的最新版本号与下载链接。
+     *
+     * @return update
+     */
+    public static String getUpdate() {
+        return getStrFromAW("update", null);
     }
 
 
@@ -567,30 +360,6 @@ public class ArcUtils {
         return scoreToStr(rateAndPttToScore(rate, ptt, note));
     }
 
-
-    /**
-     * 获取歌曲名
-     *
-     * @param songID 歌曲标识，如 ifi
-     * @return 歌曲名，如 #1f1e33
-     */
-    public static String getSongNameByID(String songID) {
-        String songName = getString(getSongInfoFile(), songID);
-        if (!songName.equals(DEF_STRING)) {
-            return songName;
-        }
-        try {
-            JSONObject obj = new JSONObject(getSongInfo(songID));
-            songName = obj.getJSONObject("content").getJSONObject("title_localized")
-                    .getString("en");
-            set(getSongInfoFile(), songID, songName);
-            return songName;
-        } catch (JSONException e) {
-            logError(e);
-        }
-        return songID;
-    }
-
     public static int difficulty(String diffStr) {
         switch (diffStr.toLowerCase()) {
             case "past":
@@ -631,18 +400,26 @@ public class ArcUtils {
     public static final String[] diffFormatStr = {"PST", "PRS", "FTR", "BYD"};
     public static final String[] clearStr = {"TL", "NC", "FR", "PM", "EC", "HC"};
     public static final String[] charStr = {
-            "光", "对立", "红", "萨菲亚", "忘却",
-            "光 & 对立", "对立（Axium）", "对立（Grievous Lady）", "星", "光 & 菲希卡",
-            "依莉丝", "爱托", "露娜", "调", "光（Zero）",
-            "光（Fracture）", "光（夏）", "对立（夏）", "对立 & 托凛", "彩梦",
-            "爱托 & 露娜（冬日）", "梦", "光 & 晴音", "咲弥", "对立 & 中二企鹅（Grievous Lady）",
-            "中二企鹅", "榛名", "诺诺", "潘多拉涅墨西斯（MTA-XXX）", "轩辕十四（MDA-21）",
-            "群愿", "光（Fantasia）", "对立（Sonata）", "兮娅", "DORO*C",
-            "对立（Tempest）", "布丽兰特", "依莉丝（夏）", "咲弥（Etude）", "爱丽丝 & 坦尼尔",
-            "露娜 & 美亚", "阿莱乌斯", "希尔", "伊莎贝尔", "未知（请找萌泪添加）",
-            "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）",
-            "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）",
-            "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）", "未知（请找萌泪添加）",
+            /*00-04*/"光", "对立", "红", "萨菲亚", "忘却",
+            /*05-09*/"光 & 对立（Reunion）", "对立（Axium）", "对立（Grievous Lady）", "星", "光 & 菲希卡",
+            /*10-14*/"依莉丝", "爱托", "露娜", "调", "光（Zero）",
+            /*15-19*/"光（Fracture）", "光（夏日）", "对立（夏日）", "对立 & 托凛", "彩梦",
+            /*20-24*/"爱托 & 露娜（冬日）", "柚梅", "光 & 赛依娜", "咲弥", "对立 & 中二企鹅（Grievous Lady）",
+            /*25-29*/"中二企鹅", "榛名", "诺诺", "潘多拉涅墨西斯（MTA-XXX）", "轩辕十四（MDA-21）",
+            /*30-34*/"群愿", "光（Fantasia）", "对立（Sonata）", "兮娅", "DORO*C",
+            /*35-39*/"对立（Tempest）", "布丽兰特", "依莉丝（夏日）", "咲弥（Etude）", "爱丽丝 & 坦尼尔",
+            /*40-44*/"露娜 & 美亚", "阿莱乌斯", "希尔", "伊莎贝尔", "迷尔",
+            /*45-49*/"拉格兰", "凛可", "奈美", "咲弥 & 伊丽莎白", "莉莉",
+            /*50-54*/"群愿（盛夏）", "爱丽丝 & 坦尼尔（Minuet）", "对立（Elegy）", "玛莉嘉", "维塔",
+            /*55-59*/"光（Fatalis）", "未知", "未知", "未知", "未知",
+            /*60-64*/"未知", "未知", "未知", "未知", "未知",
+            /*65-69*/"未知", "未知", "未知", "未知", "未知",
+            /*70-74*/"未知", "未知", "未知", "未知", "未知",
+            /*75-79*/"未知", "未知", "未知", "未知", "未知",
+            /*80-84*/"未知", "未知", "未知", "未知", "未知",
+            /*85-89*/"未知", "未知", "未知", "未知", "未知",
+            /*90-94*/"未知", "未知", "未知", "未知", "未知",
+            /*95-99*/"未知", "未知", "未知", "未知", "白姬",
     };
 
 
@@ -668,29 +445,38 @@ public class ArcUtils {
         serialize(user, getUserFile(user.getQq()));
     }
 
-    private static File getSongListFile() {
-        return getFile(getRootDir(), "songList.ser");
+    private static File getSongInfoListFile() {
+        return getFile(getRootDir(), "songInfoList.ser");
     }
 
-    static SongList getSongList(boolean unlockAtMethodEnd) {
-        SongList songList = deserialize(getSongListFile(), SongList.class, unlockAtMethodEnd);
-        if (songList == null) {
-            songList = new SongList();
-            save(songList);
+    static SongInfoList getSongInfoList(boolean unlockAtMethodEnd) {
+        SongInfoList songInfoList = deserialize(getSongInfoListFile(), SongInfoList.class, unlockAtMethodEnd);
+        if (songInfoList == null) {
+            songInfoList = new SongInfoList();
+            save(songInfoList);
         }
-        return songList;
+        return songInfoList;
     }
 
-    static SongList getSongList() {
-        return getSongList(false);
+    static SongInfoList getSongInfoList() {
+        return getSongInfoList(false);
     }
 
-    static void save(SongList songList) {
-        serialize(songList, getSongListFile());
+    static void save(SongInfoList songInfoList) {
+        serialize(songInfoList, getSongInfoListFile());
     }
 
-    static File getSongInfoFile() {
-        return getFile(getRootDir(), "songInfo.ser");
+    static JSONObject getSongListJSON() throws JSONException {
+        File songlist = getFile(getRootDir(), "songlist");
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new FileReader(songlist))) {
+            String s;
+            while ((s = br.readLine()) != null) {
+                sb.append(s).append("\n");
+            }
+        } catch (IOException e) {
+            return null;
+        }
+        return new JSONObject(sb.toString());
     }
-
 }

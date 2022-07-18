@@ -16,7 +16,7 @@ public class User implements Serializable {
 
     private long qq;
     private String arcId = "000000000";
-    private final ArrayList<SongScoreInfo> list = new ArrayList<>();
+    private final ArrayList<SongRecord> list = new ArrayList<>();
     private long queryAllScoreTime = 0L;
     private boolean isQuerying = false;
 
@@ -33,24 +33,23 @@ public class User implements Serializable {
         return list.size();
     }
 
-    public void addSongScoreInfo(SongInfo info,
-                                 int score, int shinyPure, int pure, int far, int lost,
-                                 int clearType, long timePlayed, double songRating) {
+    public void addSongRecord(SongInfo info, int difficulty,
+                              int score, int shinyPure, int pure, int far, int lost,
+                              int clearType, long timePlayed, double songRating) {
         int index = -1;
         for (int i = 0; i < list.size(); i++) {
-            SongScoreInfo oldInfo = list.get(i);
-            SongInfo songInfo = oldInfo.getSongInfo();
-            if (songInfo.getDifficulty() == info.getDifficulty()
-                    && songInfo.getSongID().equals(info.getSongID())) {
+            SongRecord previousRecord = list.get(i);
+            SongInfo songInfo = previousRecord.getSongInfo();
+            if (songInfo.equals(info) && previousRecord.getDifficulty() == difficulty) {
                 index = i;
             }
         }
-        SongScoreInfo newInfo = new SongScoreInfo(info,
+        SongRecord newRecord = new SongRecord(info, difficulty,
                 score, shinyPure, pure, far, lost, clearType, timePlayed, songRating);
         if (index == -1) {
-            list.add(newInfo);
+            list.add(newRecord);
         } else {
-            list.set(index, newInfo);
+            list.set(index, newRecord);
         }
     }
 
@@ -63,17 +62,18 @@ public class User implements Serializable {
      *
      * @return 排序后的单曲成绩
      */
-    public List<SongScoreInfo> getListSortedBySongRealRating() {
-        list.sort((o1, o2) -> Double.compare(o2.getSongInfo().getSongRate(), o1.getSongInfo().getSongRate()));
+    public List<SongRecord> getListSortedBySongRating() {
+        list.sort((o1, o2) -> Double.compare(o2.getSongInfo().getRating()[o2.getDifficulty()],
+                o1.getSongInfo().getRating()[o1.getDifficulty()]));
         return list;
     }
 
     /**
-     * 按单曲ptt从高到低排序.
+     * 按单曲游玩ptt从高到低排序.
      *
      * @return 排序后的单曲成绩
      */
-    public List<SongScoreInfo> getListSortedBySongRating() {
+    public List<SongRecord> getListSortedBySongPtt() {
         list.sort((o1, o2) -> Double.compare(o2.getSongPtt(), o1.getSongPtt()));
         return list;
     }

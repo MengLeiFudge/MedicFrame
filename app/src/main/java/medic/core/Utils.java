@@ -26,6 +26,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -1291,41 +1292,68 @@ public final class Utils {
     /* -- 从网站获取字符串 -- */
 
     /**
-     * 从指定网站获取字符串.
+     * 从网站获取字符串，通常是 json 格式数据.
      * <p>
-     * 使用 http 协议、utf8 编码，连接超时 10s，读取数据超时 10s。
+     * 未指定ua时，使用默认ua以解除部分网站对java访问的403限制。
      *
-     * @param uri       要获取信息的网站
-     * @param userAgent ua，传null或空字符串表示不使用ua
-     * @return 获取到的字符串
+     * @param httpUrl      要获取信息的网站
+     * @param urlParams    网址附加参数
+     * @param headerParams 请求头附加参数
+     * @return 反馈的字符串
      */
-    public static String getStrFromURL(String uri, String userAgent) {
+    public static String getInfoFromUrl(String httpUrl, Map<String, String> urlParams, Map<String, String> headerParams) {
+        String uri = httpUrl;
         try {
-            logInfo("Http Get Start\n" + uri);
-            StringBuilder result = new StringBuilder();
-            HttpURLConnection connection = (HttpURLConnection) new URL(uri).openConnection();
-            if (userAgent != null && !"".equals(userAgent)) {
-                connection.setRequestProperty("User-Agent", userAgent);
+            StringBuilder urlSb = new StringBuilder(httpUrl);
+            if (urlParams != null) {
+                boolean firstParam = true;
+                for (Map.Entry<String, String> x : urlParams.entrySet()) {
+                    urlSb.append(firstParam ? "?" : "&").append(x.getKey()).append("=")
+                            .append(URLEncoder.encode(x.getValue(), "UTF-8"));
+                    if (firstParam) {
+                        firstParam = false;
+                    }
+                }
             }
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(30000);
-            connection.connect();
-            BufferedReader br = new BufferedReader(new InputStreamReader(
-                    connection.getInputStream(), StandardCharsets.UTF_8));
+            uri = urlSb.toString();
+            logInfo("Http Get Start\n" + uri);
+            HttpURLConnection conn = (HttpURLConnection) new URL(uri).openConnection();
+            if (headerParams == null) {
+                headerParams = new HashMap<>();
+            }
+            if (!headerParams.containsKey("User-Agent")) {
+                // 该ua可以解除部分网站对java访问的403限制
+                headerParams.put("User-Agent", "Mozilla/4.0 (compatible; MSIE 5.0; Windows NT; DigExt)");
+            }
+            for (Map.Entry<String, String> x : headerParams.entrySet()) {
+                conn.setRequestProperty(x.getKey(), URLEncoder.encode(x.getValue(), "UTF-8"));
+            }
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(30000);
+            conn.connect();
+            if (conn.getResponseCode() != 200) {
+                return null;
+            }
+            BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder();
             String line;
             while ((line = br.readLine()) != null) {
                 result.append(line);
             }
             br.close();
+            conn.disconnect();
             String getStr = result.toString();
             try {
+                //反馈数据格式为JSONObject，格式化后显示
                 JSONObject obj = new JSONObject(getStr);
                 logInfo("Http Get Success\n" + uri + "\n" + obj.toString(2));
-            } catch (JSONException ignored) {
+            } catch (JSONException e) {
                 try {
+                    //反馈数据格式为JSONArray，格式化后显示
                     JSONArray arr = new JSONArray(getStr);
                     logInfo("Http Get Success\n" + uri + "\n" + arr.toString(2));
-                } catch (JSONException ignored2) {
+                } catch (JSONException e1) {
+                    //反馈数据格式既不是JSONObject也不是JSONArray，直接显示
                     logInfo("Http Get Success\n" + uri + "\n" + getStr);
                 }
             }
@@ -1336,12 +1364,6 @@ public final class Utils {
             return ERR_STRING;
         }
     }
-
-    /**
-     * 有些网站对java访问有403限制，使用该useragent可以解决
-     */
-    static final String USER_AGENT_AVOID_403
-            = "Mozilla/4.0 (compatible; MSIE 5.0; Windows NT; DigExt)";
 
 
     /* -- 时间相关 -- */

@@ -23,7 +23,7 @@ import static medic.core.Utils.createFileIfNotExists;
 import static medic.core.Utils.deleteIfExists;
 import static medic.core.Utils.getFullTimeStr;
 import static medic.core.Utils.getInt;
-import static medic.core.Utils.getStrFromURL;
+import static medic.core.Utils.getInfoFromUrl;
 import static medic.core.Utils.lock;
 import static medic.core.Utils.logError;
 import static medic.core.Utils.set;
@@ -112,7 +112,7 @@ public class Process extends FuncProcess {
      */
     private JSONObject getLastEvent() {
         try {
-            String json = getStrFromURL(pre + lastEvent + ".json", null);
+            String json = getInfoFromUrl(pre + lastEvent + ".json", null, null);
             if (ERR_STRING.equals(json)) {
                 return null;
             }
@@ -126,7 +126,7 @@ public class Process extends FuncProcess {
                 return obj;
             }
             // 时间差距大于300s时，判断下个event是否存在（下个活动开没开）
-            json = getStrFromURL(pre + (lastEvent + 1) + ".json", null);
+            json = getInfoFromUrl(pre + (lastEvent + 1) + ".json", null, null);
             // 如果下个活动没开
             if (ERR_STRING.equals(json)) {
                 return obj;

@@ -21,6 +21,7 @@ import static medic.core.Api.msgTime;
 import static medic.core.Api.qq;
 import static medic.core.Api.send;
 import static medic.core.Api.textMsg;
+import static medic.core.Utils.AUTHOR_NAME;
 import static medic.core.Utils.AUTHOR_QQ;
 import static medic.core.Utils.ERR_STRING;
 import static medic.core.Utils.LESS_THAN_ONE_MINUTE;
@@ -30,17 +31,16 @@ import static medic.core.Utils.logError;
 import static medic.core.Utils.logInfo;
 import static medic.core.Utils.logWarn;
 import static medic.core.Utils.milliSecondToStr;
-import static medic.core.Utils.set;
 import static medic.func.common.arc.query.ArcUtils.charStr;
 import static medic.func.common.arc.query.ArcUtils.clearStr;
 import static medic.func.common.arc.query.ArcUtils.diffFormatStr;
 import static medic.func.common.arc.query.ArcUtils.difficulty;
-import static medic.func.common.arc.query.ArcUtils.getConnectCodeStr;
 import static medic.func.common.arc.query.ArcUtils.getRandomSong;
 import static medic.func.common.arc.query.ArcUtils.getSongInfo;
-import static medic.func.common.arc.query.ArcUtils.getSongInfoFile;
-import static medic.func.common.arc.query.ArcUtils.getSongList;
-import static medic.func.common.arc.query.ArcUtils.getSongNameByID;
+import static medic.func.common.arc.query.ArcUtils.getSongInfo2;
+import static medic.func.common.arc.query.ArcUtils.getSongInfoList;
+import static medic.func.common.arc.query.ArcUtils.getSongListJSON;
+import static medic.func.common.arc.query.ArcUtils.getUpdate;
 import static medic.func.common.arc.query.ArcUtils.getUser;
 import static medic.func.common.arc.query.ArcUtils.getUserBest;
 import static medic.func.common.arc.query.ArcUtils.getUserBest30;
@@ -50,7 +50,6 @@ import static medic.func.common.arc.query.ArcUtils.pttToStr;
 import static medic.func.common.arc.query.ArcUtils.rateAndPttToScore;
 import static medic.func.common.arc.query.ArcUtils.rateToStr;
 import static medic.func.common.arc.query.ArcUtils.save;
-import static medic.func.common.arc.query.ArcUtils.scoreAndPttToRate;
 import static medic.func.common.arc.query.ArcUtils.scoreAndPttToRateStr;
 import static medic.func.common.arc.query.ArcUtils.scoreAndRateToPtt;
 import static medic.func.common.arc.query.ArcUtils.scoreAndRateToPttStr;
@@ -66,13 +65,13 @@ public class Process extends FuncProcess {
         menuList.add("arcaea");
     }
 
-    SongList songList = null;
+    SongInfoList songInfoList = null;
 
     @Override
     public void menu() {
         send("标识 [g]群聊可用 [p]私聊可用\n" +
                 "说明 [a]仅Bot管理员可用\n" +
-                "[gp]/bind \\ 绑定+arcID：将你的qq与arc账号绑定\n" +
+                "[gp]/bind \\ 绑定+arcID/昵称：将你的qq与arc账号绑定\n" +
                 "[gp]/arc \\ 查最近：获取最近一次游玩情况\n" +
                 "[gp]查分+歌名(+难度)：查询单曲最佳游玩记录，默认难度ftr\n" +
                 "[gp](查)b30：群内返回b30地板，私聊返回完整b30信息\n" +
@@ -84,7 +83,7 @@ public class Process extends FuncProcess {
                 "[gp]查定数+歌名(+难度)：查询指定歌曲定数，默认查询所有难度\n" +
                 "[gp]随机选曲(+难度下限+难度上限)：随机选曲，可以指定难度上下限，" +
                 "难度必须是1、1+、2、2+...11、11+中的某一个\n" +
-                "[gp]/conn \\ 连接码：获取当前连接码\n" +
+                "[gp]arcapk：获取当前最新apk的版本及下载地址\n" +
                 "[gp]获取/查询全部(成绩)：查询所有定数>ptt-3的歌曲成绩\n" +
                 "[gp]推分(建议)：获取推分建议"
         );
@@ -92,8 +91,9 @@ public class Process extends FuncProcess {
 
     @Override
     public boolean process() {
-        if (textMsg.matches("(?i)((绑定|/bind) *[0-9]{9})")) {
-            bind(textMsg.substring(textMsg.length() - 9));
+        if (textMsg.matches("(?i)((绑定|/bind) *.+)")) {
+            int startIndex = textMsg.startsWith("绑定") ? 2 : 5;
+            bind(textMsg.substring(startIndex).trim());
             return true;
         } else if (textMsg.matches("(?i)(/arc|查最近)")) {
             recent();
@@ -165,8 +165,8 @@ public class Process extends FuncProcess {
                 randomSong(Integer.parseInt(minLv), minPlus, Integer.parseInt(maxLv), maxPlus);
                 return true;
             }
-        } else if (textMsg.matches("(?i)(/conn|/connect|连接码|链接码)")) {
-            connect();
+        } else if (textMsg.matches("(?i)(arcapk)")) {
+            arcApk();
             return true;
         } else if (textMsg.matches("(获取|查询)(全部|所有)(成绩|)")) {
             queryAll();
@@ -179,17 +179,17 @@ public class Process extends FuncProcess {
             return true;
         } else if (qq == AUTHOR_QQ) {
             if (textMsg.matches("更新arc")) {
-                update();
+                updateAll();
                 return true;
             }
         }
         return false;
     }
 
-    public void bind(String arcID) {
+    public void bind(String arcIDOrName) {
         send("查询信息ing，请耐心等候...");
         try {
-            String s = getUserInfo(arcID, false);
+            String s = getUserInfo(arcIDOrName);
             if (ERR_STRING.equals(s)) {
                 send(qq, "api获取信息超时啦！\n请稍后再试~");
                 return;
@@ -200,18 +200,19 @@ public class Process extends FuncProcess {
                 return;
             }
 
-            // 上面status不为0已经表示所有异常情况，所以此处直接存储即可
-            User user = new User(qq, arcID);
-            save(user);
-
             JSONObject content = obj.getJSONObject("content");
-            String name = content.getString("name");
-            int rating = content.getInt("rating");// ptt*100，隐藏时为-1
+
+            JSONObject account_info = content.getJSONObject("account_info");
+            String code = account_info.getString("code");
+            String name = account_info.getString("name");
+            int rating = account_info.getInt("rating");// ptt*100，隐藏时为-1
             String ratingStr = rating == -1 ? "隐藏" :
                     new DecimalFormat("0.00").format(rating / 100.0);
 
-            send(qq, "绑定成功！\n" +
-                    name + " (" + arcID + ") - " + ratingStr);
+            User user = new User(qq, code);
+            save(user);
+
+            send(qq, "绑定成功！\n" + name + " (" + code + ") - " + ratingStr);
         } catch (JSONException e) {
             logError(e);
         }
@@ -225,7 +226,7 @@ public class Process extends FuncProcess {
         }
         send("查询信息ing，请耐心等候...");
         try {
-            String s = getUserInfo(user.getArcId(), true);
+            String s = getUserInfo(user.getArcId(), 1, true);
             if (ERR_STRING.equals(s)) {
                 send(qq, "api获取信息超时啦！\n请稍后再试~");
                 return;
@@ -241,20 +242,21 @@ public class Process extends FuncProcess {
                 send(qq, "未查找到你的近期游玩记录，先打一首歌再来查吧！");
                 return;
             }
-            String name = content.getString("name");// 昵称
-            int character = content.getInt("character");// 角色
-            int rating = content.getInt("rating");// ptt*100，隐藏时为-1
+
+            JSONObject account_info = content.getJSONObject("account_info");
+            String name = account_info.getString("name");// 昵称
+            int character = account_info.getInt("character");// 角色
+            int rating = account_info.getInt("rating");// ptt*100，隐藏时为-1
             String ratingStr = rating == -1 ? "隐藏" :
                     new DecimalFormat("0.00").format(rating / 100.0);
             // 搭档技能是否锁定、搭档是否觉醒、是否为觉醒后又切换到原始态
-            boolean isSkillSealed = content.getBoolean("is_skill_sealed");
-            boolean isCharUncapped = content.getBoolean("is_char_uncapped");
-            boolean isCharUncappedOverride = content.getBoolean("is_char_uncapped_override");
+            boolean isSkillSealed = account_info.getBoolean("is_skill_sealed");
+            boolean isCharUncapped = account_info.getBoolean("is_char_uncapped");
+            boolean isCharUncappedOverride = account_info.getBoolean("is_char_uncapped_override");
 
             // 最近游玩记录
-            JSONObject recentScore = content.getJSONObject("recent_score");
+            JSONObject recentScore = content.getJSONArray("recent_score").getJSONObject(0);
             String songID = recentScore.getString("song_id");// 歌曲id
-            String songName = getSongNameByID(songID);// 歌曲名
             int difficulty = recentScore.getInt("difficulty");// 难度，0123
             int score = recentScore.getInt("score");// 分数
             int shinyPure = recentScore.getInt("shiny_perfect_count");// 大Pure
@@ -271,10 +273,8 @@ public class Process extends FuncProcess {
                 timeDiff += "前";
             }
 
-            SongList songList = getSongList();
-            songList.add(songID, songName, difficulty,
-                    scoreAndPttToRate(songName, difficulty, score, songPtt));
-            save(songList);
+            JSONObject songinfo = content.getJSONArray("songinfo").getJSONObject(0);
+            String songName = songinfo.getString("name_en");
 
             send(qq, name + " (" + user.getArcId() + ") - " + ratingStr + "\n" +
                     "搭档：" + charStr[character] +
@@ -299,50 +299,41 @@ public class Process extends FuncProcess {
         }
         send("查询信息ing，请耐心等候...");
         try {
-            String s = getUserInfo(user.getArcId(), false);
+            String s = getUserBest(user.getArcId(), querySongName, diffStr, false, true);
             if (ERR_STRING.equals(s)) {
                 send(qq, "api获取信息超时啦！\n请稍后再试~");
                 return;
             }
-            JSONObject obj1 = new JSONObject(s);
-            if (obj1.getInt("status") != 0) {
-                send(qq, "查询出错！\n" + obj1.getString("message"));
+            JSONObject obj = new JSONObject(s);
+            if (obj.getInt("status") != 0) {
+                send(qq, "查询出错！\n" + obj.getString("message"));
                 return;
             }
 
-            s = getUserBest(user.getArcId(), querySongName, diffStr);
-            if (ERR_STRING.equals(s)) {
-                send(qq, "api获取信息超时啦！\n请稍后再试~");
-                return;
-            }
-            JSONObject obj2 = new JSONObject(s);
-            if (obj2.getInt("status") != 0) {
-                send(qq, "查询出错！\n" + obj2.getString("message"));
-                return;
-            }
+            JSONObject content = obj.getJSONObject("content");
 
-            JSONObject content = obj1.getJSONObject("content");
-            String name = content.getString("name");// 昵称
-            int character = content.getInt("character");// 角色
-            int rating = content.getInt("rating");// ptt*100，隐藏时为-1
+            JSONObject account_info = content.getJSONObject("account_info");
+            String name = account_info.getString("name");// 昵称
+            int character = account_info.getInt("character");// 角色
+            int rating = account_info.getInt("rating");// ptt*100，隐藏时为-1
             String ratingStr = rating == -1 ? "隐藏" :
                     new DecimalFormat("0.00").format(rating / 100.0);
-            boolean isSkillSealed = content.getBoolean("is_skill_sealed");
-            boolean isCharUncapped = content.getBoolean("is_char_uncapped");
-            boolean isCharUncappedOverride = content.getBoolean("is_char_uncapped_override");
+            // 搭档技能是否锁定、搭档是否觉醒、是否为觉醒后又切换到原始态
+            boolean isSkillSealed = account_info.getBoolean("is_skill_sealed");
+            boolean isCharUncapped = account_info.getBoolean("is_char_uncapped");
+            boolean isCharUncappedOverride = account_info.getBoolean("is_char_uncapped_override");
 
-            content = obj2.getJSONObject("content");
-            String songID = content.getString("song_id");// 歌曲id
-            String songName = getSongNameByID(songID);// 歌曲名
-            int difficulty = content.getInt("difficulty");// 难度，0123
-            int score = content.getInt("score");// 分数
-            int shinyPure = content.getInt("shiny_perfect_count");// 大Pure
-            int pure = content.getInt("perfect_count");// Pure
-            int far = content.getInt("near_count");// Far
-            int lost = content.getInt("miss_count");// Lost
-            int clearType = content.getInt("clear_type");// 完成类型
-            long timePlayed = content.getLong("time_played");// 游玩时间
-            double songPtt = content.getDouble("rating");// 单曲ptt
+            JSONObject record = content.getJSONObject("record");
+            String songID = record.getString("song_id");// 歌曲id
+            int difficulty = record.getInt("difficulty");// 难度，0123
+            int score = record.getInt("score");// 分数
+            int shinyPure = record.getInt("shiny_perfect_count");// 大Pure
+            int pure = record.getInt("perfect_count");// Pure
+            int far = record.getInt("near_count");// Far
+            int lost = record.getInt("miss_count");// Lost
+            int clearType = record.getInt("clear_type");// 完成类型
+            long timePlayed = record.getLong("time_played");// 游玩时间
+            double songPtt = record.getDouble("rating");// 单曲ptt
             String songRateStr = scoreAndPttToRateStr(songID, difficulty, score, songPtt);// 单曲定数
             String fullTime = getFullTimeStr(timePlayed);
             String timeDiff = milliSecondToStr(timePlayed, System.currentTimeMillis(), false);
@@ -350,10 +341,8 @@ public class Process extends FuncProcess {
                 timeDiff += "前";
             }
 
-            SongList songList = getSongList();
-            songList.add(songID, songName, difficulty,
-                    scoreAndPttToRate(songName, difficulty, score, songPtt));
-            save(songList);
+            JSONObject songinfo = content.getJSONArray("songinfo").getJSONObject(0);
+            String songName = songinfo.getString("name_en");
 
             send(qq, name + " (" + user.getArcId() + ") - " + ratingStr + "\n" +
                     "搭档：" + charStr[character] +
@@ -383,39 +372,30 @@ public class Process extends FuncProcess {
         }
         send("查询信息ing，请耐心等候...");
         try {
-            String s = getUserInfo(user.getArcId(), false);
+            String s = getUserBest30(user.getArcId(), 0, false, true);
             if (ERR_STRING.equals(s)) {
                 send(qq, "api获取信息超时啦！\n请稍后再试~");
                 return;
             }
-            JSONObject obj1 = new JSONObject(s);
-            if (obj1.getInt("status") != 0) {
-                send(qq, "查询出错！\n" + obj1.getString("message"));
+            JSONObject obj = new JSONObject(s);
+            if (obj.getInt("status") != 0) {
+                send(qq, "查询出错！\n" + obj.getString("message"));
                 return;
             }
 
-            s = getUserBest30(user.getArcId());
-            if (ERR_STRING.equals(s)) {
-                send(qq, "api获取信息超时啦！\n请稍后再试~");
-                return;
-            }
-            JSONObject obj2 = new JSONObject(s);
-            if (obj2.getInt("status") != 0) {
-                send(qq, "查询出错！\n" + obj2.getString("message"));
-                return;
-            }
+            JSONObject content = obj.getJSONObject("content");
 
-            JSONObject content = obj1.getJSONObject("content");
-            String name = content.getString("name");// 昵称
-            int character = content.getInt("character");// 角色
-            int rating = content.getInt("rating");// ptt*100，隐藏时为-1
+            JSONObject account_info = content.getJSONObject("account_info");
+            String name = account_info.getString("name");// 昵称
+            int character = account_info.getInt("character");// 角色
+            int rating = account_info.getInt("rating");// ptt*100，隐藏时为-1
             String ratingStr = rating == -1 ? "隐藏" :
                     new DecimalFormat("0.00").format(rating / 100.0);
-            boolean isSkillSealed = content.getBoolean("is_skill_sealed");
-            boolean isCharUncapped = content.getBoolean("is_char_uncapped");
-            boolean isCharUncappedOverride = content.getBoolean("is_char_uncapped_override");
+            // 搭档技能是否锁定、搭档是否觉醒、是否为觉醒后又切换到原始态
+            boolean isSkillSealed = account_info.getBoolean("is_skill_sealed");
+            boolean isCharUncapped = account_info.getBoolean("is_char_uncapped");
+            boolean isCharUncappedOverride = account_info.getBoolean("is_char_uncapped_override");
 
-            content = obj2.getJSONObject("content");
             JSONArray b30List = content.getJSONArray("best30_list");// 长度可能为1-30
             int b30Num = b30List.length();
             double b30Avg = content.getDouble("best30_avg");
@@ -424,13 +404,17 @@ public class Process extends FuncProcess {
             if (rating == -1) {
                 r10AvgStr = "未知";
             } else {
-                double b30Sum = b30Num * b30Avg;
+                /*double b30Sum = b30Num * b30Avg;
                 int r10Num = Math.min(10, b30Num);
                 // rating = (b30Sum + r10Sum) / (b30Num + r10Num) * 100
                 double r10Sum = rating / 100.0 * (b30Num + r10Num) - b30Sum;
                 double r10Avg = r10Sum / r10Num;
+                r10AvgStr = new DecimalFormat("0.000").format(r10Avg);*/
+                double r10Avg = content.getDouble("recent10_avg");
                 r10AvgStr = new DecimalFormat("0.000").format(r10Avg);
             }
+
+            JSONArray b30SongInfo = content.getJSONArray("best30_songinfo");// 长度可能为1-30
 
             int min;
             int max;
@@ -461,24 +445,22 @@ public class Process extends FuncProcess {
                     times = 0;
                     sb = new StringBuilder();
                 }
-                content = b30List.getJSONObject(i);
-                String songID = content.getString("song_id");// 歌曲id
-                String songName = getSongNameByID(songID);// 歌曲名
-                int difficulty = content.getInt("difficulty");// 难度，0123
-                int score = content.getInt("score");// 分数
-                int shinyPure = content.getInt("shiny_perfect_count");// 大Pure
-                int pure = content.getInt("perfect_count");// Pure
-                int far = content.getInt("near_count");// Far
-                int lost = content.getInt("miss_count");// Lost
-                int clearType = content.getInt("clear_type");// 完成类型
-                long timePlayed = content.getLong("time_played");// 游玩时间
-                double songPtt = content.getDouble("rating");// 单曲ptt
+
+                JSONObject b30List_i = b30List.getJSONObject(i);
+                String songID = b30List_i.getString("song_id");// 歌曲id
+                int difficulty = b30List_i.getInt("difficulty");// 难度，0123
+                int score = b30List_i.getInt("score");// 分数
+                int shinyPure = b30List_i.getInt("shiny_perfect_count");// 大Pure
+                int pure = b30List_i.getInt("perfect_count");// Pure
+                int far = b30List_i.getInt("near_count");// Far
+                int lost = b30List_i.getInt("miss_count");// Lost
+                int clearType = b30List_i.getInt("clear_type");// 完成类型
+                long timePlayed = b30List_i.getLong("time_played");// 游玩时间
+                double songPtt = b30List_i.getDouble("rating");// 单曲ptt
                 String songRateStr = scoreAndPttToRateStr(songID, difficulty, score, songPtt);// 单曲定数
 
-                SongList songList = getSongList();
-                songList.add(songID, songName, difficulty,
-                        scoreAndPttToRate(songName, difficulty, score, songPtt));
-                save(songList);
+                JSONObject b30SongInfo_i = b30SongInfo.getJSONObject(i);
+                String songName = b30SongInfo_i.getString("name_en");
 
                 if (times % 5 != 0) {
                     sb.append("\n");
@@ -512,19 +494,19 @@ public class Process extends FuncProcess {
             }
 
             JSONObject content = obj.getJSONObject("content");
-            String songID = content.getString("id");
-            String songNameEN = content.getJSONObject("title_localized").getString("en");
-            set(getSongInfoFile(), songID, songNameEN);
-            double songRate = content.getJSONArray("difficulties")
-                    .getJSONObject(difficulty).getDouble("ratingReal");
+            SongInfo info = new SongInfo(content);
+            if (!info.isOk()) {
+                send(qq, "歌曲信息处理出错！\n请联系" + AUTHOR_NAME + "(" + AUTHOR_QQ + ")！");
+                return;
+            }
 
-            SongList songList = getSongList();
-            songList.add(songID, songNameEN, difficulty, songRate);
-            save(songList);
+            SongInfoList songInfoList = getSongInfoList();
+            songInfoList.add(info);
+            save(songInfoList);
 
-            send(qq, songNameEN + " [" + diffFormatStr[difficulty]
-                    + "] [" + songRate + "]\n" +
-                    scoreToStr(score) + "  ->  " + scoreAndRateToPttStr(score, songRate));
+            send(qq, info.getName_en()[difficulty] + " [" + diffFormatStr[difficulty]
+                    + "] [" + info.getRating()[difficulty] / 10.0 + "]\n" +
+                    scoreToStr(score) + "  ->  " + scoreAndRateToPttStr(score, info.getRating()[difficulty] / 10.0));
         } catch (JSONException e) {
             logError(e);
         }
@@ -545,19 +527,19 @@ public class Process extends FuncProcess {
             }
 
             JSONObject content = obj.getJSONObject("content");
-            String songID = content.getString("id");
-            String songNameEN = content.getJSONObject("title_localized").getString("en");
-            set(getSongInfoFile(), songID, songNameEN);
-            double songRealRating = content.getJSONArray("difficulties")
-                    .getJSONObject(difficulty).getDouble("ratingReal");
+            SongInfo info = new SongInfo(content);
+            if (!info.isOk()) {
+                send(qq, "歌曲信息处理出错！\n请联系" + AUTHOR_NAME + "(" + AUTHOR_QQ + ")！");
+                return;
+            }
 
-            SongList songList = getSongList();
-            songList.add(songID, songNameEN, difficulty, songRealRating);
-            save(songList);
+            SongInfoList songInfoList = getSongInfoList();
+            songInfoList.add(info);
+            save(songInfoList);
 
             send(qq, "查询结果如下：\n" +
-                    songNameEN + "\n" +
-                    "[" + diffFormatStr[difficulty] + "] " + songRealRating);
+                    info.getName_en()[difficulty] + "\n" +
+                    "[" + diffFormatStr[difficulty] + "] " + info.getRating()[difficulty] / 10.0);
         } catch (JSONException e) {
             logError(e);
         }
@@ -578,31 +560,27 @@ public class Process extends FuncProcess {
             }
 
             JSONObject content = obj.getJSONObject("content");
-            String songID = content.getString("id");
-            String songNameEN = content.getJSONObject("title_localized").getString("en");
-            set(getSongInfoFile(), songID, songNameEN);
-            JSONArray arr = content.getJSONArray("difficulties");
-            double[] songRealRating = new double[4];
-            songRealRating[0] = arr.getJSONObject(0).getDouble("ratingReal");
-            songRealRating[1] = arr.getJSONObject(1).getDouble("ratingReal");
-            songRealRating[2] = arr.getJSONObject(2).getDouble("ratingReal");
+            SongInfo info = new SongInfo(content);
+            if (!info.isOk()) {
+                send(qq, "歌曲信息处理出错！\n请联系" + AUTHOR_NAME + "(" + AUTHOR_QQ + ")！");
+                return;
+            }
 
-            SongList songList = getSongList();
-            songList.add(songID, songNameEN, 0, songRealRating[0]);
-            songList.add(songID, songNameEN, 1, songRealRating[1]);
-            songList.add(songID, songNameEN, 2, songRealRating[2]);
+            SongInfoList songInfoList = getSongInfoList();
+            songInfoList.add(info);
+            save(songInfoList);
 
             String send = "查询结果如下：\n" +
-                    songNameEN + "\n" +
-                    "[" + diffFormatStr[0] + "] " + songRealRating[0] + "\n" +
-                    "[" + diffFormatStr[1] + "] " + songRealRating[1] + "\n" +
-                    "[" + diffFormatStr[2] + "] " + songRealRating[2];
-            if (arr.length() == 4) {
-                songRealRating[3] = arr.getJSONObject(3).getDouble("ratingReal");
-                send += "\n[" + diffFormatStr[3] + "] " + songRealRating[3];
-                songList.add(songID, songNameEN, 3, songRealRating[3]);
+                    info.getName_en()[0] + "\n" +
+                    "[" + diffFormatStr[0] + "] " + info.getRating()[0] / 10.0 + "\n" +
+                    "[" + diffFormatStr[1] + "] " + info.getRating()[1] / 10.0 + "\n" +
+                    "[" + diffFormatStr[2] + "] " + info.getRating()[2] / 10.0;
+            if (info.getDifficulty()[3] != 0) {
+                if (!info.getName_en()[0].equals(info.getName_en()[3])) {
+                    send += "\n" + info.getName_en()[3];
+                }
+                send += "\n[" + diffFormatStr[3] + "] " + info.getRating()[3] / 10.0;
             }
-            save(songList);
             send(qq, send);
         } catch (JSONException e) {
             logError(e);
@@ -624,17 +602,10 @@ public class Process extends FuncProcess {
             }
 
             JSONObject content = obj.getJSONObject("content");
-            int difficulty = content.getInt("rating_class");// 难度级别
-            content = content.getJSONObject("song_info");
-            String songID = content.getString("id");
-            String songNameEN = content.getJSONObject("title_localized").getString("en");
-            set(getSongInfoFile(), songID, songNameEN);
-            content = content.getJSONArray("difficulties").getJSONObject(difficulty);
-            double songRealRating = content.getDouble("ratingReal");
-
-            SongList songList = getSongList();
-            songList.add(songID, songNameEN, difficulty, songRealRating);
-            save(songList);
+            int difficulty = content.getInt("ratingClass");// 难度级别
+            JSONObject songinfo = content.getJSONObject("songinfo");
+            String songNameEN = songinfo.getString("name_en");
+            double songRealRating = songinfo.getDouble("rating") / 10.0;
 
             send(qq, "随机选曲结果如下：\n" +
                     songNameEN + " [" + diffFormatStr[difficulty] + "] " + songRealRating);
@@ -643,8 +614,29 @@ public class Process extends FuncProcess {
         }
     }
 
-    public void connect() {
-        send(qq, "当前连接码：" + getConnectCodeStr());
+    public void arcApk() {
+        send("查询信息ing，请耐心等候...");
+        try {
+            String s = getUpdate();
+            if (ERR_STRING.equals(s)) {
+                send(qq, "api获取信息超时啦！\n请稍后再试~");
+                return;
+            }
+            JSONObject obj = new JSONObject(s);
+            if (obj.getInt("status") != 0) {
+                send(qq, "查询出错！\n" + obj.getString("message"));
+                return;
+            }
+
+            JSONObject content = obj.getJSONObject("content");
+            String url = content.getString("url");
+            String version = content.getString("version");
+
+            send(qq, "Arcaea[" + version + "] 下载地址：\n" + url + "\n" +
+                    "您也可以在616.sb下载各个音游！");
+        } catch (JSONException e) {
+            logError(e);
+        }
     }
 
     private boolean query = true;
@@ -675,7 +667,7 @@ public class Process extends FuncProcess {
         double minPtt;
         String minPttStr;
         try {
-            String s = getUserBest30(user.getArcId());
+            String s = getUserBest30(user.getArcId(), 0, false, false);
             if (ERR_STRING.equals(s)) {
                 send(qq, "api获取信息超时啦！\n请稍后再试~");
                 return;
@@ -702,18 +694,15 @@ public class Process extends FuncProcess {
             s += "\n\nPS：由于您在群内发送了该指令（该指令建议私聊发送），" +
                     "如果该群允许群私聊，稍后bot将在私聊中发送查询进度；" +
                     "否则，建议您添加bot为好友，同样可以获取查询进度。";
-            changeGroupToPrivate();
         }
         send(qq, s);
-
-        // step3：根据b30均值处理list，除掉所有ptt不在预期范围内的歌曲
-        SongList songList = getSongList(true);
-        List<SongInfo> list = songList.getListSortByRate();
-        for (int i = list.size() - 1; i >= 0; i--) {
-            if (list.get(i).songRate < minPtt) {
-                list.remove(i);
-            }
+        if (msgSource == MsgSource.GROUP) {
+            changeGroupToPrivate();
         }
+
+        // step3：获取歌曲信息list
+        SongInfoList songInfoList = getSongInfoList(true);
+        List<SongInfo> list = songInfoList.getListSortByRate();
 
         // step4：开启一个持续发送查询进度的线程
         ExecutorService singleThreadPool = new ThreadPoolExecutor(
@@ -749,42 +738,46 @@ public class Process extends FuncProcess {
                 new ThreadPoolExecutor.AbortPolicy());
         for (SongInfo info : list) {
             pool.execute(() -> {
-                try {
-                    String str = getUserBest(user.getArcId(),
-                            info.getSongID(), info.getDifficulty() + "");
-                    if (ERR_STRING.equals(str)) {
-                        send(qq, "api获取信息超时啦！\n请稍后再试~");
-                        return;
+                for (int i = 0; i < 4; i++) {
+                    if (info.getRating()[i] / 10.0 < minPtt) {
+                        continue;
                     }
-                    JSONObject obj = new JSONObject(str);
-                    int status = obj.getInt("status");
-                    if (status == -14) {
-                        // 没玩过该曲
-                        return;
-                    } else if (status != 0) {
-                        logWarn(new UnexpectedStateException(obj.getString("message")));
-                        hasException = true;
-                        return;
-                    }
+                    try {
+                        String str = getUserBest(user.getArcId(), info.getSong_id(), i + "");
+                        if (ERR_STRING.equals(str)) {
+                            send(qq, "api获取信息超时啦！\n请稍后再试~");
+                            return;
+                        }
+                        JSONObject obj = new JSONObject(str);
+                        int status = obj.getInt("status");
+                        if (status == -15) {
+                            // not played yet
+                            return;
+                        } else if (status != 0) {
+                            logWarn(new UnexpectedStateException(obj.getString("message")));
+                            hasException = true;
+                            return;
+                        }
 
-                    JSONObject content = obj.getJSONObject("content");
-                    int score = content.getInt("score");// 分数
-                    int shinyPure = content.getInt("shiny_perfect_count");// 大Pure
-                    int pure = content.getInt("perfect_count");// Pure
-                    int far = content.getInt("near_count");// Far
-                    int lost = content.getInt("miss_count");// Lost
-                    int clearType = content.getInt("clear_type");// 完成类型
-                    long timePlayed = content.getLong("time_played");// 完成类型
-                    double songPtt = content.getDouble("rating");// 单曲ptt
-                    synchronized (this) {
-                        user.addSongScoreInfo(info,
-                                score, shinyPure, pure, far, lost,
-                                clearType, timePlayed, songPtt);
-                        num++;
+                        JSONObject record = obj.getJSONObject("content").getJSONObject("record");
+                        int score = record.getInt("score");// 分数
+                        int shinyPure = record.getInt("shiny_perfect_count");// 大Pure
+                        int pure = record.getInt("perfect_count");// Pure
+                        int far = record.getInt("near_count");// Far
+                        int lost = record.getInt("miss_count");// Lost
+                        int clearType = record.getInt("clear_type");// 完成类型
+                        long timePlayed = record.getLong("time_played");// 完成类型
+                        double songPtt = record.getDouble("rating");// 单曲ptt
+                        synchronized (this) {
+                            user.addSongRecord(info, i,
+                                    score, shinyPure, pure, far, lost,
+                                    clearType, timePlayed, songPtt);
+                            num++;
+                        }
+                    } catch (JSONException e) {
+                        logError(e);
+                        hasException = true;
                     }
-                } catch (JSONException e) {
-                    logError(e);
-                    hasException = true;
                 }
             });
         }
@@ -799,7 +792,7 @@ public class Process extends FuncProcess {
         user.setQuerying(false);
         user.setQueryAllScoreTime(System.currentTimeMillis());
         save(user);
-        save(songList);
+        save(songInfoList);
         send(qq, "查询完毕，已获取可用于推分的" + num + "个成绩数据\n" +
                 "快使用【推分】来获取推分建议吧！");
     }
@@ -834,19 +827,19 @@ public class Process extends FuncProcess {
         }
         double floorPtt = user.getB30Floor();
         int randomIndex = getRandomInt(0, user.getSize() - 1);
-        SongScoreInfo info = user.getListSortedBySongRating().get(randomIndex);
-        String songName = info.getSongInfo().getSongName();// 歌曲名
-        int difficulty = info.getSongInfo().getDifficulty();// 难度，0123
-        double songRate = info.getSongInfo().getSongRate();// 单曲定数
-        int score = info.getScore();// 分数
-        int note = info.getNote();
-        int shinyPure = info.getShinyPure();// 大Pure
-        int pure = info.getPure();// Pure
-        int far = info.getFar();// Far
-        int lost = info.getLost();// Lost
-        int clearType = info.getClearType();// 完成类型
-        long timePlayed = info.getTimePlayed();// 游玩时间
-        double songPtt = info.getSongPtt();// 单曲ptt
+        SongRecord record = user.getListSortedBySongPtt().get(randomIndex);
+        int difficulty = record.getDifficulty();// 难度，0123
+        String songName = record.getSongInfo().getName_en()[difficulty];// 歌曲名
+        double songRate = record.getSongInfo().getRating()[difficulty] / 10.0;// 单曲定数
+        int score = record.getScore();// 分数
+        int note = record.getNote();
+        int shinyPure = record.getShinyPure();// 大Pure
+        int pure = record.getPure();// Pure
+        int far = record.getFar();// Far
+        int lost = record.getLost();// Lost
+        int clearType = record.getClearType();// 完成类型
+        long timePlayed = record.getTimePlayed();// 游玩时间
+        double songPtt = record.getSongPtt();// 单曲ptt
         String songRateStr = rateToStr(songRate);
         String songTimeDiff = milliSecondToStr(timePlayed, msgTime, false);
         if (!songTimeDiff.equals(LESS_THAN_ONE_MINUTE)) {
@@ -886,191 +879,26 @@ public class Process extends FuncProcess {
         );
     }
 
-    public void update() {
+    public void updateAll() {
         send("开始更新！\n请从日志查看更新状态。");
-        songList = getSongList();
-        update("ifi");
-        update("onefr");
-        update("melodyoflove");
-        update("aiueoon");
-        update("alexandrite");
-        update("altale");
-        update("amygdata");
-        update("anokumene");
-        update("antagonism");
-        update("antithese");
-        update("arcahv");
-        update("astraltale");
-        update("auxesia");
-        update("avantraze");
-        update("axiumcrisis");
-        update("babaroque");
-        update("battlenoone");
-        update("bethere");
-        update("blacklotus");
-        update("blackterritory");
-        update("blaster");
-        update("blossoms");
-        update("blrink");
-        update("bookmaker");
-        update("brandnewworld");
-        update("callmyname");
-        update("carminescythe");
-        update("chelsea");
-        update("chronostasis");
-        update("clotho");
-        update("conflict");
-        update("corpssansorganes");
-        update("corruption");
-        update("crosssoul");
-        update("viyella");
-        update("cyaegha");
-        update("cyanine");
-        update("cyberneciacatharsis");
-        update("dandelion");
-        update("dantalion");
-        update("dataerror");
-        update("dement");
-        update("diode");
-        update("dottodot");
-        update("dreadnought");
-        update("dreamgoeson");
-        update("dreaminattraction");
-        update("dropdead");
-        update("dxfullmetal");
-        update("einherjar");
-        update("empireofwinter");
-        update("equilibrium");
-        update("essenceoftwilight");
-        update("etherstrike");
-        update("evoltex");
-        update("fairytale");
-        update("fallensquare");
-        update("filament");
-        update("flashback");
-        update("flyburg");
-        update("fractureray");
-        update("freefall");
-        update("garakuta");
-        update("gekka");
-        update("genesis");
-        update("givemeanightmare");
-        update("gloryroad");
-        update("goodtek");
-        update("grievouslady");
-        update("grimheart");
-        update("halcyon");
-        update("hallofmirrors");
-        update("harutopia");
-        update("heavenlycaress");
-        update("heavensdoor");
-        update("hikari");
-        update("iconoclast");
-        update("ignotus");
-        update("ikazuchi");
-        update("darakunosono");
-        update("impurebird");
-        update("infinityheaven");
-        update("inkarusi");
-        update("hearditsaid");
-        update("izana");
-        update("journey");
-        update("kanagawa");
-        update("laqryma");
-        update("lethaeus");
-        update("libertas");
-        update("linearaccelerator");
-        update("lostcivilization");
-        update("lostdesire");
-        update("lucifer");
-        update("lumia");
-        update("espebranch");
-        update("mazenine");
-        update("memoryforest");
-        update("memoryfactory");
-        update("merlin");
-        update("metallicpunisher");
-        update("mirzam");
-        update("modelista");
-        update("monochromeprincess");
-        update("moonheart");
-        update("moonlightofsandcastle");
-        update("nexttoyou");
-        update("nhelv");
-        update("nirvluce");
-        update("oblivia");
-        update("omakeno");
-        update("onelastdrive");
-        update("oracle");
-        update("ouroboros");
-        update("paradise");
-        update("particlearts");
-        update("partyvinyl");
-        update("phantasia");
-        update("pragmatism");
-        update("purgatorium");
-        update("qualia");
-        update("quon");
-        update("rabbitintheblackroom");
-        update("reconstruction");
-        update("redandblue");
-        update("reinvent");
-        update("relentless");
-        update("revixy");
-        update("ringedgenesis");
-        update("rise");
-        update("romancewars");
-        update("rugie");
-        update("saikyostronger");
-        update("sayonarahatsukoi");
-        update("scarletlance");
-        update("senkyou");
-        update("shadesoflight");
-        update("sheriruth");
-        update("silentrush");
-        update("singularity");
-        update("snowwhite");
-        update("solitarydream");
-        update("soundwitch");
-        update("specta");
-        update("stager");
-        update("strongholds");
-        update("sulfur");
-        update("suomi");
-        update("supernova");
-        update("surrender");
-        update("syro");
-        update("tempestissimo");
-        update("themessage");
-        update("tiemedowngently");
-        update("tiferet");
-        update("trappola");
-        update("valhallazero");
-        update("vector");
-        update("vexaria");
-        update("viciousheroism");
-        update("vindication");
-        update("vividtheory");
-        update("worldvanquisher");
-        update("worldexecuteme");
-        update("yozakurafubuki");
-        update("yourvoiceso");
-        update("aterlbus");
-        update("guardina");
-        update("scarletcage");
-        update("feelssoright");
-        update("faintlight");
-        update("teriqma");
-        update("mahoroba");
-        update("badtek");
-        update("maliciousmischance");
-        save(songList);
+        songInfoList = getSongInfoList();
+        try {
+            JSONArray songs = getSongListJSON().getJSONArray("songs");
+            for (int i = 0; i < songs.length(); i++) {
+                String sid = songs.getJSONObject(i).getString("id");
+                update(sid);
+            }
+        } catch (JSONException e) {
+            logError(e);
+            return;
+        }
+        save(songInfoList);
         send("更新完毕！");
     }
 
-    public void update(String song) {
+    public void update(String sid) {
         try {
-            String s = getSongInfo(song);
+            String s = getSongInfo2(sid);
             if (ERR_STRING.equals(s)) {
                 send(qq, "api获取信息超时啦！\n请稍后再试~");
                 return;
@@ -1080,23 +908,19 @@ public class Process extends FuncProcess {
             if (status != 0) {
                 return;
             }
+
             JSONObject content = obj.getJSONObject("content");
-            String songID = content.getString("id");
-            String songNameEN = content.getJSONObject("title_localized").getString("en");
-            set(getSongInfoFile(), songID, songNameEN);
-            JSONArray arr = content.getJSONArray("difficulties");
-            double[] songRealRating = new double[4];
-            songRealRating[0] = arr.getJSONObject(0).getDouble("ratingReal");
-            songRealRating[1] = arr.getJSONObject(1).getDouble("ratingReal");
-            songRealRating[2] = arr.getJSONObject(2).getDouble("ratingReal");
-            songList.add(songID, songNameEN, 0, songRealRating[0]);
-            songList.add(songID, songNameEN, 1, songRealRating[1]);
-            songList.add(songID, songNameEN, 2, songRealRating[2]);
-            if (arr.length() == 4) {
-                songRealRating[3] = arr.getJSONObject(3).getDouble("ratingReal");
-                songList.add(songID, songNameEN, 3, songRealRating[3]);
+            SongInfo info = new SongInfo(content);
+            if (!info.isOk()) {
+                send(qq, "歌曲信息处理出错！\n请联系" + AUTHOR_NAME + "(" + AUTHOR_QQ + ")！");
+                return;
             }
-            logInfo(song + " 已更新");
+
+            //SongInfoList songInfoList = getSongInfoList();
+            songInfoList.add(info);
+            //save(songInfoList);
+
+            logInfo(sid + " 已更新");
         } catch (JSONException e) {
             logError(e);
         }

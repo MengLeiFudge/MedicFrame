@@ -17,11 +17,12 @@ import static medic.core.Api.send;
 import static medic.core.Api.textMsg;
 import static medic.core.Utils.Dir;
 import static medic.core.Utils.ERR_STRING;
+import static medic.core.Utils.LESS_THAN_ONE_MINUTE;
 import static medic.core.Utils.getFile;
 import static medic.core.Utils.getFullTimeStr;
 import static medic.core.Utils.logError;
+import static medic.core.Utils.milliSecondToStr;
 import static medic.func.common.arc.query.ArcUtils.diffFormatStr;
-import static medic.func.common.arc.query.ArcUtils.getSongNameByID;
 import static medic.func.common.arc.query.ArcUtils.getUser;
 import static medic.func.common.arc.query.ArcUtils.getUserBest30;
 import static medic.func.common.arc.query.ArcUtils.getUserInfo;
@@ -94,58 +95,67 @@ public class Process extends FuncProcess {
         }
         send("查询信息ing，请耐心等候...");
         try {
-            String s = getUserInfo(user.getArcId(), true);
+
+
+
+
+
+            String s = getUserInfo(user.getArcId(), 1, true);
             if (ERR_STRING.equals(s)) {
                 send(qq, "api获取信息超时啦！\n请稍后再试~");
                 return;
             }
-            JSONObject obj1 = new JSONObject(s);
-            if (obj1.getInt("status") != 0) {
-                send(qq, "查询出错！\n" + obj1.getString("message"));
+            JSONObject obj = new JSONObject(s);
+            if (obj.getInt("status") != 0) {
+                send(qq, "查询出错！\n" + obj.getString("message"));
                 return;
             }
-            JSONObject content = obj1.getJSONObject("content");
-            String name = content.getString("name");// 昵称
-            int rating = content.getInt("rating");// ptt*100，隐藏时为-1
-            String ratingStr = rating == -1 ? "隐藏" :
-                    new DecimalFormat("#0.00").format(rating / 100.0);
+
+            JSONObject content = obj.getJSONObject("content");
             if (!content.has("recent_score")) {
                 send(qq, "未查找到你的近期游玩记录，先打一首歌再来查吧！");
                 return;
             }
-            content = content.getJSONObject("recent_score");
-            String songID = content.getString("song_id");// 歌曲id
-            String songName = getSongNameByID(songID);// 歌曲名
-            int difficulty = content.getInt("difficulty");// 难度，0123
-            int score = content.getInt("score");// 分数
-            int shinyPure = content.getInt("shiny_perfect_count");// 大Pure
-            int pure = content.getInt("perfect_count");// Pure
-            int far = content.getInt("near_count");// Far
-            int lost = content.getInt("miss_count");// Lost
-            int clearType = content.getInt("clear_type");// 完成类型
-            long timePlayed = content.getLong("time_played");// 游玩时间
-            double songPtt = content.getDouble("rating");// 单曲ptt
+
+            JSONObject account_info = content.getJSONObject("account_info");
+            String name = account_info.getString("name");// 昵称
+            int character = account_info.getInt("character");// 角色
+            int rating = account_info.getInt("rating");// ptt*100，隐藏时为-1
+            String ratingStr = rating == -1 ? "隐藏" :
+                    new DecimalFormat("0.00").format(rating / 100.0);
+            // 搭档技能是否锁定、搭档是否觉醒、是否为觉醒后又切换到原始态
+            boolean isSkillSealed = account_info.getBoolean("is_skill_sealed");
+            boolean isCharUncapped = account_info.getBoolean("is_char_uncapped");
+            boolean isCharUncappedOverride = account_info.getBoolean("is_char_uncapped_override");
+
+            // 最近游玩记录
+            JSONObject recentScore = content.getJSONArray("recent_score").getJSONObject(0);
+            String songID = recentScore.getString("song_id");// 歌曲id
+            int difficulty = recentScore.getInt("difficulty");// 难度，0123
+            int score = recentScore.getInt("score");// 分数
+            int shinyPure = recentScore.getInt("shiny_perfect_count");// 大Pure
+            int pure = recentScore.getInt("perfect_count");// Pure
+            int far = recentScore.getInt("near_count");// Far
+            int lost = recentScore.getInt("miss_count");// Lost
+            int clearType = recentScore.getInt("clear_type");// 完成类型
+            long timePlayed = recentScore.getLong("time_played");// 游玩时间
+            double songPtt = recentScore.getDouble("rating");// 单曲ptt
             String songRateStr = scoreAndPttToRateStr(songID, difficulty, score, songPtt);// 单曲定数
-            double songRate = Double.parseDouble(songRateStr);
-
-            s = getUserBest30(user.getArcId());
-            if (ERR_STRING.equals(s)) {
-                send(qq, "api获取信息超时啦！\n请稍后再试~");
-                return;
+            String fullTime = getFullTimeStr(timePlayed);
+            String timeDiff = milliSecondToStr(timePlayed, System.currentTimeMillis(), false);
+            if (!timeDiff.equals(LESS_THAN_ONE_MINUTE)) {
+                timeDiff += "前";
             }
-            JSONObject obj2 = new JSONObject(s);
-            if (obj2.getInt("status") != 0) {
-                send(qq, "查询出错！\n" + obj2.getString("message"));
-                return;
-            }
-            content = obj2.getJSONObject("content");
-            double b30Avg = content.getDouble("best30_avg");
 
-            double score1 = getScore1(b30Avg, songRate, score, shinyPure);
+            JSONObject songinfo = content.getJSONArray("songinfo").getJSONObject(0);
+            String songName = songinfo.getString("name_en");
+            double songRate = songinfo.getInt("rating") / 10.0;
+
+            double score1 = getScore1(rating / 100.0, songRate, score, shinyPure);
             double score2 = getScore2(shinyPure, pure, far, lost);
             double result = score1 * 0.8 + score2 * 0.2;
             s = name + " (" + user.getArcId() + ") - " + ratingStr + "\n" +
-                    "best30 均值：" + df3.format(b30Avg) + "\n" +
+                    //"best30 均值：" + df3.format(b30Avg) + "\n" +
                     songName + " [" + diffFormatStr[difficulty] + "] [" + songRateStr + "]\n" +
                     scoreToStr(score) + " -> " + pttToStr(songPtt) + "\n\n" +
                     "基础得分：" + df4.format(score1) + "\n" +

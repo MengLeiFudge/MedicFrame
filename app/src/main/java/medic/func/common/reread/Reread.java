@@ -18,7 +18,6 @@ import static medic.core.Utils.Dir;
 import static medic.core.Utils.getDouble;
 import static medic.core.Utils.getFile;
 import static medic.core.Utils.getRandomDouble;
-import static medic.core.Utils.logInfo;
 import static medic.core.Utils.set;
 
 /**
@@ -39,11 +38,11 @@ public class Reread extends FuncProcess {
     @Override
     public void menu() {
         send("[g]群聊 [p]私聊 [a]仅管理员\n" +
-                        "[a][pg]设置复读(概率)+概率(+%)：设置复读概率为指定值的一百倍\n" +
-                        "栗子：【设置复读2.5】表示本群复读概率将设为2.5%\n" +
-                        "注意，概率最低为0.01%，最高为50%\n" +
-                        "复读时，有一半概率倒序复读\n" +
-                        "本群当前复读概率：" + chance2Str(chance)
+                "[a][pg]设置复读(概率)+概率(+%)：设置复读概率为指定值的一百倍\n" +
+                "栗子：【设置复读2.5】表示本群复读概率将设为2.5%\n" +
+                "注意，概率最低为0.01%，最高为50%\n" +
+                "复读时，有一半概率倒序复读\n" +
+                "本群当前复读概率：" + chance2Str(chance)
         );
     }
 

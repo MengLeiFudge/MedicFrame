@@ -1,11 +1,11 @@
 package medic.func.common.kun;
 
+import medic.core.FuncProcess;
+import medic.core.Main;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-
-import medic.core.FuncProcess;
-import medic.core.Main;
 
 import static medic.core.Api.MsgSource;
 import static medic.core.Api.getAtQQ;

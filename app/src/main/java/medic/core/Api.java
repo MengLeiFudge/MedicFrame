@@ -20,8 +20,8 @@ import static medic.core.Utils.Dir;
 import static medic.core.Utils.ERR_LONG;
 import static medic.core.Utils.ERR_STRING;
 import static medic.core.Utils.getFile;
+import static medic.core.Utils.getInfoFromUrl;
 import static medic.core.Utils.getLong;
-import static medic.core.Utils.getStrFromURL;
 import static medic.core.Utils.getString;
 import static medic.core.Utils.lock;
 import static medic.core.Utils.logError;
@@ -545,6 +545,9 @@ public class Api {
      * 添加 url/本地 图片，不会立即发送，直到调用send.
      */
     public static void addImg(String pathOrUrl) {
+        if (pathOrUrl == null || pathOrUrl.equals("")) {
+            return;
+        }
         exec("addImg", pathOrUrl);
         temporaryMsg += "[图片 " + pathOrUrl + "]";
     }
@@ -567,11 +570,13 @@ public class Api {
      */
     public static String getFirstImgUrl() {
         if ("".equals(imgMsg)) {
-            throw new UnexpectedStateException("收到的消息不含图片");
+            //throw new UnexpectedStateException("收到的消息不含图片");
+            return null;
         }
         // imageMsg = "9E9AFE870DD7FACAB9D9CDA7365799EB.jpg"
         // imageMsg = "XXX.PNG"
         // imageMsg = "XXX1.jpgXXX2.jpg"
+        // imageMsg = "XXX.null"
         int index = imgMsg.indexOf('.');
         String imgType = imgMsg.substring(index + 1, index + 4);
         // 图片md5，如"9E9AFE870DD7FACAB9D9CDA7365799EB"
@@ -585,8 +590,9 @@ public class Api {
             img = imgMsg.substring(0, index);
             type = imgMsg.substring(index, index + 5);
         } else {
-            throw new UnexpectedStateException("未知图片格式[" + imgType + "]\n" +
-                    "imgMsg[" + imgMsg + "]");
+            //throw new UnexpectedStateException("未知图片格式[" + imgType + "]\n" +
+            //        "imgMsg[" + imgMsg + "]");
+            return null;
         }
         return "http://gchat.qpic.cn/gchatpic_new/" + qq + "/0-0-" +
                 img + "/0?term=2" + type;
@@ -926,7 +932,7 @@ public class Api {
         // {"nickName":"\u840c\u6cea\u9171\u6700\u53ef\u7231\u5566",
         // "avatar":"http:\/\/q1.qlogo.cn\/g?b=qq&nk=605738729&s=0","status":1,
         // "origin":"\u63a5\u53e3\u6e90\u7801\u83b7\u53d6\u53ca\u514d\u8d39\u8c03\u7528\u5730\u5740www.zhai78.com"}
-        String s = getStrFromURL("https://data.zhai78.com/openQqDetail.php?qq=" + qq, null);
+        String s = getInfoFromUrl("https://data.zhai78.com/openQqDetail.php?qq=" + qq, null, null);
         if (ERR_STRING.equals(s)) {
             return ERR_STRING;
         }
@@ -947,7 +953,7 @@ public class Api {
         // {"success":true,"imgurl":"https://q2.qlogo.cn/headimg_dl?dst_uin=605738729&spec=640",
         // "name":"萌泪酱最可爱啦","qemail":"605738729@qq.com",
         // "qzone":"https://user.qzone.qq.com/605738729"}
-        String s = getStrFromURL("https://api.vvhan.com/api/qq?qq=" + qq, null);
+        String s = getInfoFromUrl("https://api.vvhan.com/api/qq?qq=" + qq, null, null);
         if (ERR_STRING.equals(s)) {
             return ERR_STRING;
         }

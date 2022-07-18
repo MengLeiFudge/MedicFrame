@@ -21,7 +21,7 @@ import static medic.core.Api.textMsg;
 import static medic.core.Utils.DEF_INT;
 import static medic.core.Utils.getFile;
 import static medic.core.Utils.getInt;
-import static medic.core.Utils.getStrFromURL;
+import static medic.core.Utils.getInfoFromUrl;
 import static medic.core.Utils.logError;
 import static medic.core.Utils.set;
 import static medic.core.Utils.unicodeToUtf8;
@@ -209,7 +209,7 @@ public class HPicture extends FuncProcess {
             }
         }
         send(qq, "正在查找图片...");
-        String s = getStrFromURL(apiUrl.toString(), null);
+        String s = getInfoFromUrl(apiUrl.toString(), null, null);
         try {
             JSONObject obj = new JSONObject(s);
             String code = obj.getString("error");
