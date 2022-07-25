@@ -570,7 +570,6 @@ public class Api {
      */
     public static String getFirstImgUrl() {
         if ("".equals(imgMsg)) {
-            //throw new UnexpectedStateException("收到的消息不含图片");
             return null;
         }
         // imageMsg = "9E9AFE870DD7FACAB9D9CDA7365799EB.jpg"
@@ -583,15 +582,13 @@ public class Api {
         String img;
         // 带.的后缀名，且有大小写区分，如".jpg"、".png"、".JPEG"
         String type;
-        if (imgType.matches("(?i)(jpg|png|gif|mir)")) {
+        if (imgType.matches("(?i)(jpg|png|gif)")) {
             img = imgMsg.substring(0, index);
             type = imgMsg.substring(index, index + 4);
         } else if (imgType.matches("(?i)(jpe)")) {
             img = imgMsg.substring(0, index);
             type = imgMsg.substring(index, index + 5);
         } else {
-            //throw new UnexpectedStateException("未知图片格式[" + imgType + "]\n" +
-            //        "imgMsg[" + imgMsg + "]");
             return null;
         }
         return "http://gchat.qpic.cn/gchatpic_new/" + qq + "/0-0-" +
@@ -600,12 +597,19 @@ public class Api {
 
     /**
      * 添加图片消息，图片是收到的图片（如果有的话）.
+     *
+     * @return 有常规格式图片且添加成功返回true，否则返回false
      */
-    public static void addFirstImgIfExists() {
+    public static boolean addFirstImg() {
         if ("".equals(imgMsg)) {
-            return;
+            return false;
         }
-        addImg(getFirstImgUrl());
+        String firstImgUrl = getFirstImgUrl();
+        if (firstImgUrl != null) {
+            addImg(firstImgUrl);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -655,21 +659,6 @@ public class Api {
     }
 
     /**
-     * 更改消息发送的目标为好友消息.
-     *
-     * @param qq 消息发送的目标，需为bot好友
-     * @deprecated 由于不清楚该qq是否为好友，而设置来源为临时消息时，好友也能收到消息，
-     * 故应使用 {@link #changeAllSourceToPrivate(long)} 代替
-     */
-    @Deprecated
-    public static void changeAllSourceToFriend(long qq) {
-        setGroup(-1);
-        setCode(-1);
-        setQQ(qq);
-        msgSource = MsgSource.FRIEND;
-    }
-
-    /**
      * 更改消息发送的目标为私聊消息.
      */
     public static boolean changeGroupToPrivate() {
@@ -682,8 +671,6 @@ public class Api {
     public static boolean changeAllSourceToPrivate(long qq) {
         long lastGroup = getLong(GROUP_OF_LAST_MSG, qq);
         if (lastGroup == DEF_LONG) {
-            //logError(new UnexpectedStateException(getNick(qq) + "(" + qq + ")未发过言！"));
-            //return false;
             lastGroup = 319567534L;
             logWarn(new UnexpectedStateException(getNick(qq) + "(" + qq + ")未发过言，使用群319567534代替！"));
         }
@@ -692,8 +679,6 @@ public class Api {
             setCode(code);
             setQQ(qq);
         } else {
-            //logError(new UnexpectedStateException("未找到群" + lastGroup + "的code！"));
-            //return false;
             setCode(lastGroup);
             setQQ(qq);
             logWarn(new UnexpectedStateException("未找到群" + lastGroup + "的code，使用群号代替！"));
@@ -706,20 +691,7 @@ public class Api {
      * 在 medic 的日志界面显示发送的消息内容.
      */
     public static void showMsgToBeSentLog() {
-        logInfo("发" + msgSource + "：群 " + group + "，QQ " + qq + "\n" +
-                temporaryMsg);
-        /*
-        if (msgSource == MsgSource.GROUP) {
-            logInfo("发" + msgSource + "：群 " + group + "\n" +
-                    temporaryMsg);
-        } else if (msgSource == MsgSource.TEMPORARY) {
-            logInfo("发" + msgSource + "：群 " + group + "，QQ " + qq + "\n" +
-                    temporaryMsg);
-        } else if (msgSource == MsgSource.FRIEND) {
-            logInfo("发" + msgSource + "：QQ " + qq + "\n" +
-                    temporaryMsg);
-        }
-         */
+        logInfo("发" + msgSource + "：群 " + group + "，QQ " + qq + "\n" + temporaryMsg);
         temporaryMsg = "";
     }
 

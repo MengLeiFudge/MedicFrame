@@ -6,7 +6,7 @@ import medic.core.Main;
 import java.io.File;
 import java.text.DecimalFormat;
 
-import static medic.core.Api.addFirstImgIfExists;
+import static medic.core.Api.addFirstImg;
 import static medic.core.Api.addText;
 import static medic.core.Api.getAtNum;
 import static medic.core.Api.group;
@@ -65,27 +65,33 @@ public class Reread extends FuncProcess {
             }
         }
         // 不复读含有艾特的消息
-        if (getAtNum() > 0) {
+        if (getAtNum() > 0 || getRandomDouble(0, 1) < chance) {
             return false;
         }
-        if (getRandomDouble(0, 1) < chance) {
-            if (getRandomDouble(0, 1) < 0.5) {
-                addText(textMsg);
-            } else {
-                // 文字倒序输出
-                char[] strChar = textMsg.toCharArray();
-                for (int i = 0; i < strChar.length / 2; i++) {
-                    char c = strChar[i];
-                    strChar[i] = strChar[strChar.length - 1 - i];
-                    strChar[strChar.length - 1 - i] = c;
-                }
-                addText(new String(strChar));
+        // 获取文字复读
+        String text;
+        if (getRandomDouble(0, 1) < 0.5) {
+            text = textMsg;
+        } else {
+            // 文字倒序输出
+            char[] strChar = textMsg.toCharArray();
+            for (int i = 0; i < strChar.length / 2; i++) {
+                char c = strChar[i];
+                strChar[i] = strChar[strChar.length - 1 - i];
+                strChar[strChar.length - 1 - i] = c;
             }
-            addFirstImgIfExists();
-            send();
-            return true;
+            text = new String(strChar);
         }
-        return false;
+        if ("".equals(text)) {
+            if (!addFirstImg()) {
+                return false;
+            }
+        } else {
+            addFirstImg();
+        }
+        addText(text);
+        send();
+        return true;
     }
 
     private String chance2Str(double chance) {
