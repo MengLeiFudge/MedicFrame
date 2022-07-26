@@ -41,8 +41,8 @@ import static medic.core.Api.MsgType;
 import static medic.core.Api.group;
 import static medic.core.Api.groupNick;
 import static medic.core.Api.imgMsg;
-import static medic.core.Api.initApiBaseInfo;
-import static medic.core.Api.initApiOk;
+import static medic.core.Api.initApi;
+import static medic.core.Api.isApiAvailable;
 import static medic.core.Api.jsonMsg;
 import static medic.core.Api.msgSource;
 import static medic.core.Api.msgType;
@@ -66,11 +66,10 @@ import static medic.core.Utils.getFile;
 import static medic.core.Utils.getFuncState;
 import static medic.core.Utils.getLong;
 import static medic.core.Utils.initDirs;
-import static medic.core.Utils.initDirsOk;
+import static medic.core.Utils.isDirsAvailable;
 import static medic.core.Utils.lock;
 import static medic.core.Utils.logError;
 import static medic.core.Utils.logInfo;
-import static medic.core.Utils.logWarn;
 import static medic.core.Utils.sendAllErrorToAuthor;
 import static medic.core.Utils.set;
 import static medic.core.Utils.timestampToStr;
@@ -86,9 +85,9 @@ import static medic.core.Utils.unlockFiles;
  * <p>
  * 例如，Lib->classes.dex|medic.main.Main|main(groupMsg\,@c0) 表示依次反射调用如下方法：
  * <ul>
- * <li>{@link medic.core.Main#apiSet(Object)}，参数由 medic 给出</li>
- * <li>{@link medic.core.Main#saveInstance(Object)}，参数由 medic 给出</li>
- * <li>{@link medic.core.Main#main(String...)}，参数为 groupMsg、@c0（即全部文本消息）</li>
+ * <li>{@link #apiSet(Object)}，参数由 medic 给出</li>
+ * <li>{@link #saveInstance(Object)}，参数由 medic 给出</li>
+ * <li>{@link #main(String...)}，参数为 groupMsg、@c0（即全部文本消息）</li>
  * </ul>
  * 请务必注意，<b>{@code static}、{@code synchronized} 作用域均为本条消息</b>，
  * 在不同消息之间，它们不会生效。
@@ -104,6 +103,8 @@ public final class Main {
     private Main() {
     }
 
+    // region 词库版本
+
     /**
      * 格式为 "yyyy-MMdd-HHmm" 的时间字符串，用于生成版本号.
      *
@@ -114,7 +115,7 @@ public final class Main {
     /**
      * 获取以 {@link #LAST_MODIFY_DATE} 计算得到的版本字符串.
      *
-     * @return 2020年1月1日0时0分会返回0101.26296800
+     * @return 2020年1月1日0时0分返回0101.26296800
      */
     private static String getVersion() {
         Date date;
@@ -129,87 +130,9 @@ public final class Main {
         return new SimpleDateFormat("yyMMdd", Locale.CHINA).format(date) + "." + minuteTimespan;
     }
 
-    /**
-     * 初始化收发消息的实例对象.
-     * <ul>
-     * <li><b>该方法不可修改</b></li>
-     * <li><b>该方法由 medic 反射调用</b></li>
-     * <li>该方法不会覆盖之前消息的 api</li>
-     * </ul>
-     *
-     * @param apiObj 收发消息的实例对象
-     * @see Api#initApiBaseInfo(Object)
-     */
-    public static void apiSet(Object apiObj) {
-        try {
-            initApiBaseInfo(apiObj);
-            if (!initApiOk) {
-                initDirs();
-                initApiBaseInfo(apiObj);
-            }
-            initDirs();
-            if (!initDirsOk) {
-                initApiBaseInfo(apiObj);
-                initDirs();
-            }
-        } catch (RuntimeException e) {
-            logError(e);
-        }
-    }
+    // endregion
 
-    /**
-     * 指示文件，该文件存在时，表示应再次初始化自定义列表.
-     *
-     * @see #saveInstance(Object)
-     */
-    public static final File INIT_INSTANCE_FILE = getFile(Dir.DATA, "shouldInitList.txt");
-
-    /**
-     * 初始化自定义内容.
-     * <ul>
-     * <li><b>该方法由 medic 反射调用。</b>
-     * <li>该方法可以构建作用域为所有消息的对象。
-     * <li>该方法通常用于构建锁，以确保文件读写在高并发下正常运转。
-     * </ul>
-     * 若不同程序生成 dex 的入口类名不同，则获取的实例对象 {@code oldObj} 不同；否则相同。
-     *
-     * @param obj 之前保存的实例对象
-     * @return 想要存储的实例对象
-     */
-    @SuppressWarnings("unchecked")
-    public static Object saveInstance(Object obj) {
-        // 重复一次以避免任何异常
-        for (int i = 0; i < 2; i++) {
-            try {
-                if (INIT_INSTANCE_FILE.exists()) {
-                    deleteIfExists(INIT_INSTANCE_FILE);
-                    obj = null;
-                    logInfo("检测到初始化文件，重新初始化fileLockMap");
-                }
-                if (obj instanceof Map<?, ?>) {
-                    // 直接强转就行，不需要花里胡哨的方法
-                    fileLockMap = (ConcurrentHashMap<File, ReentrantReadWriteLock>) obj;
-                    if (DEBUG) {
-                        StringBuilder s = new StringBuilder("fileLockMap初始内容如下：");
-                        int index = 1;
-                        for (Map.Entry<File, ReentrantReadWriteLock> entry : fileLockMap.entrySet()) {
-                            s.append("\n").append(index++).append(entry.getKey()).append(", ").append(entry.getValue());
-                        }
-                        logInfo(s.toString());
-                    }
-                } else {
-                    fileLockMap = new ConcurrentHashMap<>(16);
-                    obj = fileLockMap;
-                    logWarn(new UnexpectedStateException("obj 非继承于 Map<?, ?>，初始化fileLockMap"));
-                }
-                return obj;
-            } catch (RuntimeException e) {
-                obj = null;
-                logError("初始化异常，使用空对象重新尝试", e);
-            }
-        }
-        return null;
-    }
+    // region 功能枚举
 
     /**
      * log 相关功能枚举（群之间功能状态互通）.
@@ -325,6 +248,88 @@ public final class Main {
         }
     }
 
+    // endregion
+
+    // region Medic反射初始化
+
+    /**
+     * 初始化收发消息的实例对象.
+     * <ul>
+     * <li>该方法<b>不可</b>修改</li>
+     * <li>该方法由 medic 反射调用，无需主动调用</li>
+     * <li>该方法不会覆盖之前消息的 api</li>
+     * </ul>
+     *
+     * @param apiObj 收发消息的实例对象
+     */
+    public static void apiSet(Object apiObj) {
+        initApi(apiObj);
+        initDirs();
+    }
+
+    /**
+     * 该文件存在时，应初始化自定义列表.
+     *
+     * @see #saveInstance(Object)
+     */
+    public static File getResetInstanceFile() {
+        return getFile(Dir.DATA, "shouldInitList.txt");
+    }
+
+    /**
+     * 初始化自定义内容.
+     * <ul>
+     * <li><b>该方法由 medic 反射调用。</b>
+     * <li>该方法可以构建作用域为所有消息的对象。
+     * <li>该方法通常用于构建锁，以确保文件读写在高并发下正常运转。
+     * </ul>
+     * 若不同程序生成 dex 的入口类名不同，则获取的实例对象 {@code oldObj} 不同；否则相同。
+     *
+     * @param obj 之前保存的实例对象
+     * @return 想要存储的实例对象
+     */
+    @SuppressWarnings("unchecked")
+    public static Object saveInstance(Object obj) {
+        if (!isApiAvailable || !isDirsAvailable) {
+            return null;
+        }
+        // 重复一次以避免任何异常
+        for (int i = 0; i < 2; i++) {
+            try {
+                if (getResetInstanceFile().exists()) {
+                    deleteIfExists(getResetInstanceFile());
+                    obj = null;
+                    logInfo("检测到初始化文件，重新初始化fileLockMap");
+                }
+                if (obj instanceof Map<?, ?>) {
+                    // 直接强转就行，不需要花里胡哨的方法
+                    fileLockMap = (ConcurrentHashMap<File, ReentrantReadWriteLock>) obj;
+                    if (DEBUG) {
+                        StringBuilder s = new StringBuilder("fileLockMap初始内容如下：");
+                        int index = 1;
+                        for (Map.Entry<File, ReentrantReadWriteLock> entry : fileLockMap.entrySet()) {
+                            s.append("\n").append(index++).append(entry.getKey()).append(", ").append(entry.getValue());
+                        }
+                        logInfo(s.toString());
+                    }
+                } else {
+                    fileLockMap = new ConcurrentHashMap<>(16);
+                    obj = fileLockMap;
+                    logInfo("obj 非继承于 Map<?, ?>，初始化fileLockMap");
+                }
+                return obj;
+            } catch (RuntimeException e) {
+                obj = null;
+                logError("初始化异常，使用空对象重新尝试", e);
+            }
+        }
+        return null;
+    }
+
+    // endregion
+
+    // region Medic反射处理消息、词库更新
+
     /**
      * 程序主入口，在hdic.txt中调用并传入对应参数.
      *
@@ -350,17 +355,13 @@ public final class Main {
      * @param args 由 hdic.txt 中调用 dex 所传入的参数
      */
     public static void main(String... args) {
+        if (!isApiAvailable || !isDirsAvailable) {
+            return;
+        }
         try {
-            if (DEBUG) {
-                StringBuilder sb = new StringBuilder();
-                for (Map.Entry<File, ReentrantReadWriteLock> entry : fileLockMap.entrySet()) {
-                    sb.append("\n").append(entry.getKey()).append(", ").append(entry.getValue());
-                }
-                String info = sb.toString();
-                logInfo("".equals(info) ? "fileLockMap初始内容为空" : "fileLockMap初始内容如下：" + info);
-            }
-            if (qq == AUTHOR_QQ && textMsg.matches("重置(列表|)")) {
-                send(createFileIfNotExists(INIT_INSTANCE_FILE)
+            // 手动创建重置文件
+            if (qq == AUTHOR_QQ && "重置实例".equals(textMsg)) {
+                send(createFileIfNotExists(getResetInstanceFile())
                         ? "重置文件创建成功"
                         : "重置文件创建失败");
                 return;
@@ -707,4 +708,6 @@ public final class Main {
             }
         }
     }
+
+    // endregion
 }

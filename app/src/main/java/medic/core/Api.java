@@ -134,20 +134,18 @@ public class Api {
     }
 
     /**
-     * 指示消息Api是否初始化成功.
+     * 指示消息Api是否可用.
      */
-    static boolean initApiOk = false;
+    static boolean isApiAvailable = false;
 
     /**
      * 初始化消息 Api，并从中获取必要的数据.
+     * <p>
+     * 如果成功，则 {@link #isApiAvailable} 置为 {@code true}；否则显示错误日志。
      */
-    static void initApiBaseInfo(Object obj) {
-        if (initApiOk) {
-            return;
-        }
+    static void initApi(Object obj) {
         try {
             apiObj = obj;
-            initApiOk = true;
             textMsg = getText();
             imgMsg = getImg();
             jsonMsg = getJson();
@@ -177,8 +175,10 @@ public class Api {
                     msgType = MsgType.NULL;
                 }
             }
+            isApiAvailable = true;
         } catch (RuntimeException e) {
-            initApiOk = false;
+            isApiAvailable = false;
+            logError(e);
         }
     }
 
@@ -227,8 +227,7 @@ public class Api {
      * @return 调用结果
      */
     private static String exec(String methodName, String... args) {
-        if (!initApiOk) {
-            logError(new UnexpectedStateException("Api 初始化失败，无法使用！"));
+        if (!isApiAvailable) {
             return "";
         }
         try {
@@ -243,6 +242,7 @@ public class Api {
             }
             return result == null ? "" : result.toString();
         } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
+            isApiAvailable = false;
             logError(e);
             return "";
         }

@@ -49,14 +49,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static medic.core.Api.changeAllSourceToPrivate;
-import static medic.core.Api.initApiOk;
+import static medic.core.Api.isApiAvailable;
 import static medic.core.Api.send;
 import static medic.core.Main.Func;
-import static medic.core.Main.INIT_INSTANCE_FILE;
 import static medic.core.Main.LogFunc;
 import static medic.core.Main.LogFunc.WRITE_ERROR_LOG;
 import static medic.core.Main.LogFunc.WRITE_INFO_LOG;
 import static medic.core.Main.LogFunc.WRITE_WARN_LOG;
+import static medic.core.Main.getResetInstanceFile;
 
 /**
  * 工具类，用于读取文件、取随机数等操作.
@@ -155,26 +155,25 @@ public final class Utils {
     }
 
     /**
-     * 指示本机存储路径是否初始化成功.
+     * 指示本机存储路径是否可用.
      */
-    static boolean initDirsOk = false;
+    static boolean isDirsAvailable = false;
 
     /**
      * 初始化本机存储路径.
+     * <p>
+     * 如果成功，则 {@link #isDirsAvailable} 置为 {@code true}；否则显示错误日志。
      */
     static void initDirs() {
-        if (initDirsOk) {
-            return;
-        }
         try {
             boolean ok = true;
             for (Dir dir : Dir.values()) {
                 ok &= dir.isDirectory();
             }
-            initDirsOk = ok;
+            isDirsAvailable = ok;
         } catch (RuntimeException e) {
+            isDirsAvailable = false;
             logError(e);
-            initDirsOk = false;
         }
     }
 
@@ -250,9 +249,6 @@ public final class Utils {
      * @param info 要记录的信息
      */
     private static void showLog(LogType type, String info) {
-        if (!initApiOk) {
-            return;
-        }
         String[] data = {type.firstLowerChar(), info};
         try {
             Method log = Class.forName("app.yashiro.medic.app.dic.Toolkit")
@@ -271,7 +267,7 @@ public final class Utils {
      * @param info 要记录的信息
      */
     private static void writeLog(LogType type, String info) {
-        if (!initDirsOk || !type.writeLog()) {
+        if (!isDirsAvailable || !type.writeLog()) {
             return;
         }
         long time = System.currentTimeMillis();
@@ -288,6 +284,7 @@ public final class Utils {
             bw.newLine();
             bw.newLine();
         } catch (IOException e) {
+            isDirsAvailable = false;
             logError(e);
         }
     }
@@ -328,22 +325,6 @@ public final class Utils {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             e.printStackTrace(new PrintStream(baos));
             exceptionInfo = baos.toString().trim();
-            /*
-            // 只显示该 dex 中的堆栈
-            Package p = Main.class.getPackage();
-            if (p != null) {
-                // packageName 一定不为 null
-                String packageName = p.getName();
-                // 主类在包中才会执行后续操作
-                if (!"".equals(packageName)) {
-                    int lastPackageName = exceptionInfo.lastIndexOf(packageName);
-                    int nextEnter = exceptionInfo.indexOf('\n', lastPackageName);
-                    if (nextEnter != -1) {
-                        exceptionInfo = exceptionInfo.substring(0, nextEnter);
-                    }
-                }
-            }
-             */
         }
         boolean emptyExceptionInfo = "".equals(exceptionInfo);
 
@@ -356,6 +337,9 @@ public final class Utils {
         }
     }
 
+    /**
+     * 指示是否已发过错误信息.
+     */
     private static boolean hasTip = false;
 
     /**
@@ -373,10 +357,6 @@ public final class Utils {
      * @param e         异常
      */
     static void swsLog(LogType type, String extraInfo, Exception e) {
-        if (!initApiOk && !initDirsOk) {
-            // 出现这样的绝境，那确实没办法= =
-            return;
-        }
         String fullInfo = spliceExtraInfoAndException(extraInfo, e);
         showLog(type, fullInfo);
         writeLog(type, fullInfo);
@@ -660,7 +640,8 @@ public final class Utils {
                         logInfo("锁定成功 " + files[i].getPath());
                     } else {
                         logError(new UnexpectedStateException("锁定失败 " + files[i].getPath()));
-                        createFileIfNotExists(INIT_INSTANCE_FILE);
+                        // 自动创建重置文件
+                        createFileIfNotExists(getResetInstanceFile());
                     }
                 }
             } catch (InterruptedException e) {
