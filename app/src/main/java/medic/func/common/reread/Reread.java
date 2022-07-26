@@ -64,13 +64,22 @@ public class Reread extends FuncProcess {
                 return true;
             }
         }
-        // 不复读含有艾特的消息
-        if (getAtNum() > 0 || getRandomDouble(0, 1) < chance) {
+        // 未达到复读概率，则不复读
+        if (getRandomDouble(0, 1) < chance) {
+            return false;
+        }
+        // 含有艾特，则不复读
+        if (getAtNum() > 0) {
+            return false;
+        }
+        // 含有斜杠或反斜杠，可能是表情或网址，不复读
+        if (textMsg.contains("/") || textMsg.contains("\\")) {
             return false;
         }
         // 获取文字复读
         String text;
         if (getRandomDouble(0, 1) < 0.5) {
+            // 文字正序输出
             text = textMsg;
         } else {
             // 文字倒序输出
