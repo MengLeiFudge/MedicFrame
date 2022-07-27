@@ -48,7 +48,9 @@ public class Reread extends FuncProcess {
 
     private static final File REREAD_FILE = getFile(Dir.SETTINGS, "reread.txt");
 
-    // 默认概率：5%
+    /**
+     * 复读概率，默认值 5%.
+     */
     private double chance = 0.05;
 
     @Override
@@ -64,8 +66,8 @@ public class Reread extends FuncProcess {
                 return true;
             }
         }
-        // 未达到复读概率，则不复读
-        if (getRandomDouble(0, 1) < chance) {
+        // 超出指定复读概率，则不复读
+        if (getRandomDouble(0, 1) > chance) {
             return false;
         }
         // 含有艾特，则不复读

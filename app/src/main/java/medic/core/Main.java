@@ -43,7 +43,6 @@ import static medic.core.Api.groupNick;
 import static medic.core.Api.imgMsg;
 import static medic.core.Api.initApi;
 import static medic.core.Api.isApiAvailable;
-import static medic.core.Api.jsonMsg;
 import static medic.core.Api.msgSource;
 import static medic.core.Api.msgType;
 import static medic.core.Api.qq;
@@ -51,7 +50,6 @@ import static medic.core.Api.reload;
 import static medic.core.Api.saveCodeAndNick;
 import static medic.core.Api.send;
 import static medic.core.Api.textMsg;
-import static medic.core.Api.xmlMsg;
 import static medic.core.FuncProcess.getProcessed;
 import static medic.core.Utils.AUTHOR_NAME;
 import static medic.core.Utils.AUTHOR_QQ;
@@ -83,17 +81,14 @@ import static medic.core.Utils.unlockFiles;
  * <p>
  * Lib->dex名称|完整类名|调用方法名(参数1\,参数2\,...).
  * <p>
- * 例如，Lib->classes.dex|medic.main.Main|main(groupMsg\,@c0) 表示依次反射调用如下方法：
+ * 例如，Lib->classes.dex|medic.core.Main|main(groupMsg) 表示依次反射调用如下方法：
  * <ul>
- * <li>{@link #apiSet(Object)}，参数由 medic 给出</li>
- * <li>{@link #saveInstance(Object)}，参数由 medic 给出</li>
- * <li>{@link #main(String...)}，参数为 groupMsg、@c0（即全部文本消息）</li>
+ * <li>{@link #apiSet(Object)}，参数由 Medic 提供</li>
+ * <li>{@link #saveInstance(Object)}，参数由 Medic 提供</li>
+ * <li>{@link #main(String...)}，参数为 "groupMsg"</li>
  * </ul>
- * 请务必注意，<b>{@code static}、{@code synchronized} 作用域均为本条消息</b>，
- * 在不同消息之间，它们不会生效。
- * <p>
- * 所以，尽管 {@link medic.core.Api} 中变量、方法均为静态，
- * 但<b>不会出现</b>新 api 覆盖旧 api，从而导致旧消息发送的对象也变化的现象。
+ * 请务必注意，{@code static}、{@code synchronized} 作用域均为<b>本条消息</b>，
+ * 在不同消息之间，它们不会生效。所以本程序将会大量使用 {@code static} 变量、方法。
  * <p>
  * 如果想构建任何真正意义上的 {@code static} 对象，请使用 {@link #saveInstance(Object)}.
  *
@@ -110,7 +105,7 @@ public final class Main {
      *
      * @see #getVersion()
      */
-    static final String LAST_MODIFY_DATE = "2022-0726-0900";
+    static final String LAST_MODIFY_DATE = "2022-0727-0900";
 
     /**
      * 获取以 {@link #LAST_MODIFY_DATE} 计算得到的版本字符串.
@@ -140,7 +135,7 @@ public final class Main {
      * 【如非必要，请勿改动】
      */
     public enum LogFunc {
-        // 无论哪种 log，都会在 medic 的日志界面显示
+        // 无论哪种 log，都会在 Medic 的日志界面显示
         // 此处表示 log 是否应存储到本地文件
         WRITE_ERROR_LOG(1, "保存Error日志"),
         WRITE_WARN_LOG(2, "保存Warn日志"),
@@ -253,18 +248,19 @@ public final class Main {
     // region Medic反射初始化
 
     /**
-     * 初始化收发消息的实例对象.
-     * <ul>
-     * <li>该方法<b>不可</b>修改</li>
-     * <li>该方法由 medic 反射调用，无需主动调用</li>
-     * <li>该方法不会覆盖之前消息的 api</li>
-     * </ul>
+     * 初始化收发消息的实例对象，由 Medic 反射调用.
      *
      * @param apiObj 收发消息的实例对象
      */
     public static void apiSet(Object apiObj) {
-        initApi(apiObj);
         initDirs();
+        if (isDirsAvailable) {
+            RESET_INSTANCE_FILE = getFile(Dir.DATA, "resetInstance.txt");
+            HDIC_FILE = getFile(Dir.DIC, "hdic.txt");
+            GROUP_OF_LAST_MSG = getFile(Dir.SETTINGS, "groupOfLastMsg.txt");
+            SYSTEM_PROCESS_STATE = getFile(Dir.SETTINGS, "systemProcessState.txt");
+        }
+        initApi(apiObj);
     }
 
     /**
@@ -272,18 +268,19 @@ public final class Main {
      *
      * @see #saveInstance(Object)
      */
-    public static File getResetInstanceFile() {
-        return getFile(Dir.DATA, "shouldInitList.txt");
-    }
+    public static File RESET_INSTANCE_FILE;
 
     /**
-     * 初始化自定义内容.
+     * 初始化自定义内容，由 Medic 反射调用.
      * <ul>
-     * <li><b>该方法由 medic 反射调用。</b>
-     * <li>该方法可以构建作用域为所有消息的对象。
-     * <li>该方法通常用于构建锁，以确保文件读写在高并发下正常运转。
+     * <li>该方法可构建作用域为所有消息的对象。
+     * <li>该方法可用于构建锁，以确保文件读写在高并发下正常运转。
      * </ul>
-     * 若不同程序生成 dex 的入口类名不同，则获取的实例对象 {@code oldObj} 不同；否则相同。
+     * Medic 使用 HashMap 存储 obj，键是类名。
+     * <p>
+     * 例如，Lib->classes.dex|medic.core.Main|main(groupMsg) 的键就是 "medic.core.Main"。
+     * <p>
+     * 所以，不同的类名可以获取不同的 obj，它们不会互相干扰。
      *
      * @param obj 之前保存的实例对象
      * @return 想要存储的实例对象
@@ -296,8 +293,8 @@ public final class Main {
         // 重复一次以避免任何异常
         for (int i = 0; i < 2; i++) {
             try {
-                if (getResetInstanceFile().exists()) {
-                    deleteIfExists(getResetInstanceFile());
+                if (RESET_INSTANCE_FILE != null && RESET_INSTANCE_FILE.isFile()) {
+                    deleteIfExists(RESET_INSTANCE_FILE);
                     obj = null;
                     logInfo("检测到初始化文件，重新初始化fileLockMap");
                 }
@@ -331,19 +328,9 @@ public final class Main {
     // region Medic反射处理消息、词库更新
 
     /**
-     * 程序主入口，在hdic.txt中调用并传入对应参数.
-     *
-     * <ul>
-     * <li>【该方法由 medic 反射调用，调用时间在 {@link #apiSet(Object)} 后。】
-     * <li>该方法可以构建作用域为所有消息的对象，原因见 {@link Main} 的说明。
-     * <li>该方法通常用于构建锁，以确保文件读写在高并发下正常运转。
-     * </ul>
+     * 程序主入口，由 Medic 反射调用.
      * <p>
-     * 调用方法：Lib->dex名称|完整类名|调用方法名(参数1\,参数2\,...)
-     * <p>
-     * 如 Lib->classes.dex|medic.main.Main|main(groupMsg)
-     * <p>
-     * 消息分为三种，群消息、私聊消息、系统消息
+     * 消息分为以下三种：
      * <ul>
      * <li>群消息：群收到的消息，对应 hdic.txt 中[词条]的内容
      * <li>私聊消息：未加机器人好友的人，通过群给机器人发的消息为临时消息；
@@ -351,6 +338,9 @@ public final class Main {
      * 对应 hdic.txt 中[词条]有“[临时]”前缀的内容
      * <li>系统消息：入群申请等，对应 hdic.txt 中[模块]的 System
      * </ul>
+     * <p>
+     * 注意，如果由该线程抛出未捕获的异常，Medic 可以在日志界面显示；
+     * 如果是新开线程抛出未捕获的异常，则会造成 Medic 闪退。
      *
      * @param args 由 hdic.txt 中调用 dex 所传入的参数
      */
@@ -361,7 +351,7 @@ public final class Main {
         try {
             // 手动创建重置文件
             if (qq == AUTHOR_QQ && "重置实例".equals(textMsg)) {
-                send(createFileIfNotExists(getResetInstanceFile())
+                send(createFileIfNotExists(RESET_INSTANCE_FILE)
                         ? "重置文件创建成功"
                         : "重置文件创建失败");
                 return;
@@ -433,7 +423,7 @@ public final class Main {
         }
     }
 
-    private static final File HDIC_FILE = getFile(Dir.DIC, "hdic.txt");
+    private static File HDIC_FILE;
 
     private static void updateHdic() {
         boolean searchedUpdateBotName = false;
@@ -519,36 +509,14 @@ public final class Main {
     }
 
     /**
-     * 获取要记录在日志中的收到消息的描述.
-     *
-     * @return 收到消息的描述
-     */
-    private static String getTextAndImageInfo() {
-        if (msgType == MsgType.JSON) {
-            return jsonMsg;
-        } else if (msgType == MsgType.XML) {
-            return xmlMsg;
-        } else {
-            String s = "";
-            if (!"".equals(textMsg)) {
-                s += "\n" + textMsg;
-            }
-            if (!"".equals(imgMsg)) {
-                s += "\n" + "[图片 " + imgMsg + "]";
-            }
-            return s;
-        }
-    }
-
-    /**
      * 存放上次发言群的文件.
      */
-    static final File GROUP_OF_LAST_MSG = getFile(Dir.SETTINGS, "groupOfLastMsg.txt");
+    static File GROUP_OF_LAST_MSG;
 
     /**
      * 存放系统消息处理情况的文件.
      */
-    private static final File SYSTEM_PROCESS_STATE = getFile(Dir.SETTINGS, "systemProcessState.txt");
+    private static File SYSTEM_PROCESS_STATE;
 
     /**
      * 处理系统消息.

@@ -49,14 +49,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static medic.core.Api.changeAllSourceToPrivate;
-import static medic.core.Api.isApiAvailable;
 import static medic.core.Api.send;
 import static medic.core.Main.Func;
 import static medic.core.Main.LogFunc;
 import static medic.core.Main.LogFunc.WRITE_ERROR_LOG;
 import static medic.core.Main.LogFunc.WRITE_INFO_LOG;
 import static medic.core.Main.LogFunc.WRITE_WARN_LOG;
-import static medic.core.Main.getResetInstanceFile;
+import static medic.core.Main.RESET_INSTANCE_FILE;
 
 /**
  * 工具类，用于读取文件、取随机数等操作.
@@ -222,15 +221,15 @@ public final class Utils {
     /**
      * 暂存要发给作者的 error 信息，使用 set 以去掉重复的 error.
      */
-    private static final Set<String> tempErrorSendToAuthor = new HashSet<>();
+    private static final Set<String> TEMP_ERROR_SEND_TO_AUTHOR = new HashSet<>();
 
     static void sendAllErrorToAuthor() {
-        if (!tempErrorSendToAuthor.isEmpty()) {
+        if (!TEMP_ERROR_SEND_TO_AUTHOR.isEmpty()) {
             changeAllSourceToPrivate(AUTHOR_QQ);
             // 最多发送两条，防止发太多导致 bot 冻结
-            for (int i = 0; i < tempErrorSendToAuthor.size(); i++) {
+            for (int i = 0; i < TEMP_ERROR_SEND_TO_AUTHOR.size(); i++) {
                 if (i < 3) {
-                    for (String s : tempErrorSendToAuthor) {
+                    for (String s : TEMP_ERROR_SEND_TO_AUTHOR) {
                         send(Thread.currentThread().getId() + "\n" + s);
                         sleep(500);
                     }
@@ -369,7 +368,7 @@ public final class Utils {
                 hasTip = true;
             }
             // 向作者发送消息，先将其暂存，因为群消息切到私聊就不能切回群
-            tempErrorSendToAuthor.add(fullInfo);
+            TEMP_ERROR_SEND_TO_AUTHOR.add(fullInfo);
         }
     }
 
@@ -641,7 +640,7 @@ public final class Utils {
                     } else {
                         logError(new UnexpectedStateException("锁定失败 " + files[i].getPath()));
                         // 自动创建重置文件
-                        createFileIfNotExists(getResetInstanceFile());
+                        createFileIfNotExists(RESET_INSTANCE_FILE);
                     }
                 }
             } catch (InterruptedException e) {

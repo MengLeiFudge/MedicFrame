@@ -1,6 +1,5 @@
 package medic.core;
 
-import android.content.Context;
 import lombok.Getter;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -23,6 +22,7 @@ import static medic.core.Utils.getFile;
 import static medic.core.Utils.getInfoFromUrl;
 import static medic.core.Utils.getLong;
 import static medic.core.Utils.getString;
+import static medic.core.Utils.isDirsAvailable;
 import static medic.core.Utils.lock;
 import static medic.core.Utils.logError;
 import static medic.core.Utils.logInfo;
@@ -68,7 +68,7 @@ public class Api {
      * 待发送的消息，用于在 medic 的日志页面显示.
      */
     private static String temporaryMsg = "";
-    private static final File NICK_DIR = getFile(Dir.SETTINGS, "groupNick");
+    private static File NICK_DIR;
 
 
     /**
@@ -145,7 +145,13 @@ public class Api {
      */
     static void initApi(Object obj) {
         try {
+            if (isDirsAvailable) {
+                NICK_DIR = getFile(Dir.SETTINGS, "groupNick");
+                NICK_DIR.mkdirs();
+            }
             apiObj = obj;
+            // isApiAvailable必须在此处置为true，否则后续方法都不会调用反射
+            isApiAvailable = true;
             textMsg = getText();
             imgMsg = getImg();
             jsonMsg = getJson();
@@ -175,7 +181,6 @@ public class Api {
                     msgType = MsgType.NULL;
                 }
             }
-            isApiAvailable = true;
         } catch (RuntimeException e) {
             isApiAvailable = false;
             logError(e);
@@ -199,7 +204,7 @@ public class Api {
         if (msgSource != MsgSource.GROUP) {
             return;
         }
-        // qq、昵称写入数据库
+        // todo: qq、昵称写入数据库
         File nickFile = getFile(NICK_DIR, group + ".txt");
         lock(nickFile);
         try {
@@ -228,6 +233,9 @@ public class Api {
      */
     private static String exec(String methodName, String... args) {
         if (!isApiAvailable) {
+            if ("send".equals(methodName)) {
+                temporaryMsg = "";
+            }
             return "";
         }
         try {
@@ -243,6 +251,9 @@ public class Api {
             return result == null ? "" : result.toString();
         } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
             isApiAvailable = false;
+            if ("send".equals(methodName)) {
+                temporaryMsg = "";
+            }
             logError(e);
             return "";
         }
@@ -301,6 +312,13 @@ public class Api {
     }
 
     /**
+     * 获取被回复的文本消息.
+     */
+    private static String getReply() {
+        return exec("getReplyMsg");
+    }
+
+    /**
      * 返回当前消息的来源群，同@group.
      * <p>
      * 好友消息返回-1。
@@ -344,11 +362,8 @@ public class Api {
     }
 
     /**
-     * 返回当前消息标题，同@title.
-     *
-     * @deprecated 该方法返回的值总为""，没有使用的必要
+     * 返回群头衔，同@title.
      */
-    @Deprecated
     private static String getTitle() {
         return exec("getTitle");
     }
@@ -462,26 +477,6 @@ public class Api {
             atNicks[i] = getAtNick(i);
         }
         return atNicks;
-    }
-
-    /**
-     * 返回上下文消息.
-     *
-     * @return 上下文消息
-     */
-    public static Context getContext() {
-        if (apiObj == null) {
-            logError(new UnexpectedStateException("apiObj 未初始化！"));
-            return null;
-        }
-        try {
-            Method method = apiObj.getClass().getMethod("getContext");
-            Object result = method.invoke(apiObj);
-            return result == null ? null : (Context) result;
-        } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
-            logError(e);
-            return null;
-        }
     }
 
 
@@ -700,6 +695,7 @@ public class Api {
      */
     public static void send() {
         exec("send");
+        // 如果上面的exec出问题，则需清空temporaryMsg
         showMsgToBeSentLog();
     }
 
@@ -762,6 +758,13 @@ public class Api {
         exec("sendXml", xml);
         temporaryMsg += xml;
         showMsgToBeSentLog();
+    }
+
+    /**
+     * 设置回复消息.
+     */
+    public static void setReply() {
+        exec("setReply");
     }
 
     /**
@@ -983,9 +986,9 @@ public class Api {
     /**
      * 撤回当前消息，需要登录账号在群内是管理员.
      * <p>
-     * 撤回特定消息参考 {@link #withdrawMsg(int)}
+     * 撤回特定消息参考 {@link #withDrawMsg(int)}
      */
-    public static void withdrawMsg() {
+    public static void withDrawMsg() {
         exec("withDrawMsg");
     }
 
@@ -995,7 +998,7 @@ public class Api {
      * @param mark 消息标记
      * @see #getMark()
      */
-    public static void withdrawMsg(int mark) {
+    public static void withDrawMsg(int mark) {
         exec("withDrawMsg", mark + "");
     }
 
@@ -1008,7 +1011,7 @@ public class Api {
      * @param mark  消息标记
      * @see #getMark()
      */
-    public static void withdrawMsg(long group, int mark) {
+    public static void withDrawMsg(long group, int mark) {
         exec("withDrawMsg", group + "", mark + "");
     }
 
@@ -1016,7 +1019,7 @@ public class Api {
      * 禁言，需要登录账号在群内是管理员，member为-1表示群禁言，time为0表示解除禁言.
      */
     private static void talk(long member, int time) {
-        exec("shotup", getGroup() + "", member + "", time + "");
+        exec("shutup", getGroup() + "", member + "", time + "");
     }
 
     /**
@@ -1208,6 +1211,20 @@ public class Api {
     }
 
     /**
+     * 返回某个群是否开启.
+     */
+    private static boolean getTroopSwitch(long group) {
+        return Boolean.parseBoolean(exec("getTroopSwitch", group + ""));
+    }
+
+    /**
+     * 设置某个群是否开启.
+     */
+    private static void setTroopSwitch(long group, boolean open) {
+        exec("setTroopSwitch", group + "", open + "");
+    }
+
+    /**
      * 返回QQSkey，此参数可以用于登录QQ空间等.
      */
     public static String getSkey() {
@@ -1226,5 +1243,47 @@ public class Api {
      */
     public static String getClientKey() {
         return exec("getClientKey").replace(" ", "");
+    }
+
+    /**
+     * 获取电池电量.
+     */
+    public static String getBatteryLevel() {
+        return exec("getBatteryLevel");
+    }
+
+    /**
+     * 获取充电状态.
+     */
+    public static String getBatteryStatus() {
+        return exec("getBatteryStatus");
+    }
+
+    /**
+     * 获取运行时间，返回秒.
+     */
+    private static long getRunTimes() {
+        return Long.parseLong(exec("getRunTimes"));
+    }
+
+    /**
+     * 调用指定模块获取返回结果，同 `Mod()`.
+     */
+    private static void invokeMod(String mod) {
+        exec("invokeMod", mod);
+    }
+
+    /**
+     * 戳一戳指定qq.
+     */
+    private static void pokeAvatar(long qq) {
+        exec("pokeAvatar", qq + "");
+    }
+
+    /**
+     * 刷新群列表.
+     */
+    public static void reloadTroopList() {
+        exec("reloadTroopList");
     }
 }
